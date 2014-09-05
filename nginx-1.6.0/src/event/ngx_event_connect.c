@@ -101,9 +101,9 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     wev->log = pc->log;
 
     pc->connection = c;
-
+    
     c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
-
+    
 #if (NGX_THREADS)
 
     /* TODO: lock event when call completion handler */
@@ -116,16 +116,19 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
 #endif
 
     if (ngx_add_conn) {
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_add_conn");
         if (ngx_add_conn(c) == NGX_ERROR) {
+            ngx_log_debug(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_add_conn err over");
             goto failed;
         }
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_add_conn over");
     }
-
-    ngx_log_debug3(NGX_LOG_DEBUG_EVENT, pc->log, 0,
-                   "connect to %V, fd:%d #%uA", pc->name, s, c->number);
-
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, pc->log, 0, "connect here");
+    //ngx_log_debug3(NGX_LOG_DEBUG_EVENT, pc->log, 0,
+    //               "connect to %V, fd:%d #%uA", pc->name, s, c->number);
+    
     rc = connect(s, pc->sockaddr, pc->socklen);
-
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, pc->log, 0, "connect over");
     if (rc == -1) {
         err = ngx_socket_errno;
 

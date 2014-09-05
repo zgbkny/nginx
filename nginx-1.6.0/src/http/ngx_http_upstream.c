@@ -583,7 +583,7 @@ ngx_http_upstream_init_request(ngx_http_request_t *r)
         uscf = u->conf->upstream;
 
     } else {
-
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "u->resolved != NULL");
         if (u->resolved->sockaddr) {
 
             if (ngx_http_upstream_create_round_robin_peer(r, u->resolved)
@@ -593,9 +593,9 @@ ngx_http_upstream_init_request(ngx_http_request_t *r)
                                                NGX_HTTP_INTERNAL_SERVER_ERROR);
                 return;
             }
-
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_connect");
             ngx_http_upstream_connect(r, u);
-
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_connect over");
             return;
         }
 
@@ -1212,9 +1212,11 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     tp = ngx_timeofday();
     u->state->response_sec = tp->sec;
     u->state->response_msec = tp->msec;
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_event_connect_peer");
     rc = ngx_event_connect_peer(&u->peer);
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_event_connect_peer over");
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http upstream connect: %i", rc);
 
@@ -1238,7 +1240,8 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     }
 
     /* rc == NGX_OK || rc == NGX_AGAIN || rc == NGX_DONE */
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "rc == NGX_OK || rc == NGX_AGAIN || rc == NGX_DONE");
     c = u->peer.connection;
 
     c->data = r;
@@ -1325,8 +1328,11 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     }
 
 #endif
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_upstream_send_request");
     ngx_http_upstream_send_request(r, u);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_upstream_send_request over");
 }
 
 
@@ -1685,9 +1691,10 @@ ngx_http_upstream_process_header(ngx_http_request_t *r, ngx_http_upstream_t *u)
 #endif
 
         rc = u->process_header(r);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "u->process_header ok. %d", rc);
 
         if (rc == NGX_AGAIN) {
-
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "process_header again");
             if (u->buffer.last == u->buffer.end) {
                 ngx_log_error(NGX_LOG_ERR, c->log, 0,
                               "upstream sent too big header");
@@ -1709,6 +1716,7 @@ ngx_http_upstream_process_header(ngx_http_request_t *r, ngx_http_upstream_t *u)
     }
 
     if (rc == NGX_ERROR) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "process_header error");
         ngx_http_upstream_finalize_request(r, u,
                                            NGX_HTTP_INTERNAL_SERVER_ERROR);
         return;
