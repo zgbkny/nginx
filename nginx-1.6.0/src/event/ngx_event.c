@@ -201,6 +201,8 @@ ngx_module_t  ngx_event_core_module = {
 void
 ngx_process_events_and_timers(ngx_cycle_t *cycle)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "ngx_process_events_and_timers");
+
     ngx_uint_t  flags;
     ngx_msec_t  timer, delta;
 

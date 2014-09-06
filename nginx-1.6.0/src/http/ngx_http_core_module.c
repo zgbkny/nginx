@@ -875,6 +875,7 @@ ngx_http_handler(ngx_http_request_t *r)
 void
 ngx_http_core_run_phases(ngx_http_request_t *r)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_core_run_phases");
     ngx_int_t                   rc;
     ngx_http_phase_handler_t   *ph;
     ngx_http_core_main_conf_t  *cmcf;

@@ -1824,6 +1824,8 @@ ngx_http_process_request_header(ngx_http_request_t *r)
 void
 ngx_http_process_request(ngx_http_request_t *r)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_process_request");
+
     ngx_connection_t  *c;
 
     c = r->connection;
@@ -2166,6 +2168,8 @@ ngx_http_find_virtual_server(ngx_connection_t *c,
 static void
 ngx_http_request_handler(ngx_event_t *ev)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_request_handler");
+
     ngx_connection_t    *c;
     ngx_http_request_t  *r;
     ngx_http_log_ctx_t  *ctx;
@@ -2193,6 +2197,7 @@ ngx_http_request_handler(ngx_event_t *ev)
 void
 ngx_http_run_posted_requests(ngx_connection_t *c)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "ngx_http_run_posted_requests");
     ngx_http_request_t         *r;
     ngx_http_log_ctx_t         *ctx;
     ngx_http_posted_request_t  *pr;
@@ -2200,6 +2205,7 @@ ngx_http_run_posted_requests(ngx_connection_t *c)
     for ( ;; ) {
 
         if (c->destroyed) {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "ngx_http_run_posted_requests return");
             return;
         }
 
@@ -2207,6 +2213,7 @@ ngx_http_run_posted_requests(ngx_connection_t *c)
         pr = r->main->posted_requests;
 
         if (pr == NULL) {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "ngx_http_run_posted_requests return");
             return;
         }
 
