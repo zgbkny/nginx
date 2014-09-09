@@ -311,7 +311,7 @@ static ngx_int_t uptest_upstream_process_header(ngx_http_request_t *r) {
 }
 
 static void uptest_upstream_finalize_request(ngx_http_request_t *r) {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uptest_upstream_finalize_request");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uptest_upstream_finalizeW_request");
 }
 
 static void* ngx_http_uptest_create_loc_conf(ngx_conf_t* cf) {

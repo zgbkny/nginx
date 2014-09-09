@@ -973,10 +973,14 @@ ngx_http_upstream_handler(ngx_event_t *ev)
                    "http upstream request: \"%V?%V\"", &r->uri, &r->args);
 
     if (ev->write) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler write");
         u->write_event_handler(r, u);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler write over");
 
     } else {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler read");
         u->read_event_handler(r, u);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler read over");
     }
 
     ngx_http_run_posted_requests(c);
@@ -2170,6 +2174,7 @@ ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r,
         }
 
         u->state->response_length += n;
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_process_body_in_memory u->input_filter");
 
         if (u->input_filter(u->input_filter_ctx, n) == NGX_ERROR) {
             ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
@@ -2203,6 +2208,8 @@ ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r,
 static void
 ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response");
+
     int                        tcp_nodelay;
     ssize_t                    n;
     ngx_int_t                  rc;
