@@ -18,7 +18,9 @@ static ngx_int_t ngx_http_tcp_reuse_input_filter(void *data, ssize_t bytes);
 
 ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r) 
 {
-
+	ngx_http_upstream_t			*u;
+	ngx_http_tcp_reuse_conf_t	*trcf;
+	
 }
 
 void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)

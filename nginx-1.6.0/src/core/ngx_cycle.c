@@ -340,7 +340,7 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
     }
 
     /* open the new files */
-
+ 
     part = &cycle->open_files.part;
     file = part->elts;
 

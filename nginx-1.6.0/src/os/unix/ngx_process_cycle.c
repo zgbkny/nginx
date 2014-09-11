@@ -301,7 +301,7 @@ ngx_single_process_cycle(ngx_cycle_t *cycle)
     }
 
     for (i = 0; ngx_modules[i]; i++) {
-        if (ngx_modules[i]->init_process) {
+        if (ngx_m odules[i]->init_process) {
             if (ngx_modules[i]->init_process(cycle) == NGX_ERROR) {
                 /* fatal */
                 exit(2);
