@@ -63,7 +63,7 @@ struct ngx_http_cache_s {
     u_char                           key[NGX_HTTP_CACHE_KEY_LEN];
 
     ngx_file_uniq_t                  uniq;
-    time_t                           valid_sec;å¡ª¡ª
+    time_t                           valid_sec;
     time_t                           last_modified;
     time_t                           date;
 

@@ -84,6 +84,7 @@ static ngx_int_t ngx_http_test_handler(ngx_http_request_t* r) {
     out[1].next = NULL;
 
     b->pos = hlcf->output_words.data;
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_test_handler:%s", b->pos);
     b->last = hlcf->output_words.data + (hlcf->output_words.len);
     b->memory = 1;
     b->last_buf = 1;

@@ -56,7 +56,7 @@ static char* ngx_http_tcp_reuse(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_tcp_reuse");
     ngx_http_core_loc_conf_t* clcf;
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-    clcf->handler = ngx_http_uptest_handler;
+    clcf->handler = ngx_http_tcp_reuse_handler;
     ngx_conf_set_str_slot(cf, cmd, conf);
     return NGX_CONF_OK;
 }
