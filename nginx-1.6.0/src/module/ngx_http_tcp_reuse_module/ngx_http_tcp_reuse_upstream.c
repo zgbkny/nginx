@@ -1,4 +1,5 @@
 #include "ngx_http_tcp_reuse_upstream.h"
+#include "ngx_http_tcp_reuse_handler.h"
 
 static void ngx_http_tcp_reuse_upstream_init_request(ngx_http_request_t *r);
 
@@ -10,9 +11,11 @@ static void ngx_http_upstream_check_broken_connection(ngx_http_request_t *r, ngx
 
 static void ngx_http_upstream_cleanup(void *data);
 
+static void ngx_http_tcp_reuse_upstream_handler(ngx_event_t *ev);
+
 static void ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u);
 
-static ngx_int_t ngx_http_upstream_reinit(ngx_http_request_t *r, ngx_http_upstream_t *u);
+static ngx_int_t ngx_http_tcp_reuse_upstream_reinit(ngx_http_request_t *r, ngx_http_upstream_t *u);
 
 static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_upstream_t *u, ngx_int_t rc);
 
@@ -515,11 +518,11 @@ static void ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t
 
     c->data = r;
 
-    //c->write->handler = ngx_http_upstream_handler;
-    //c->read->handler = ngx_http_upstream_handler;
+    c->write->handler = ngx_http_tcp_reuse_upstream_handler;
+    c->read->handler = ngx_http_tcp_reuse_upstream_handler;
 
-    //u->write_event_handler = ngx_http_upstream_send_request_handler;
-    //u->read_event_handler = ngx_http_upstream_process_header;
+    u->write_event_handler = ngx_http_tcp_reuse_rev_handler;
+    u->read_event_handler = ngx_http_tcp_reuse_wev_handler;
 
     c->sendfile &= r->connection->sendfile;
     u->output.sendfile = c->sendfile;
@@ -549,7 +552,7 @@ static void ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t
     u->writer.limit = 0;
 
     if (u->request_sent) {
-        if (ngx_http_upstream_reinit(r, u) != NGX_OK) {
+        if (ngx_http_tcp_reuse_upstream_reinit(r, u) != NGX_OK) {
             ngx_http_upstream_finalize_request(r, u,
                                                NGX_HTTP_INTERNAL_SERVER_ERROR);
             return;
@@ -594,6 +597,41 @@ static void ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t
     //ngx_http_upstream_send_request(r, u);
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_http_upstream_send_request over");
+}
+
+static void ngx_http_tcp_reuse_upstream_handler(ngx_event_t *ev)
+{
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler");
+
+    ngx_connection_t     *c;
+    ngx_http_request_t   *r;
+    ngx_http_log_ctx_t   *ctx;
+    ngx_http_upstream_t  *u;
+
+    c = ev->data;
+    r = c->data;
+
+    u = r->upstream;
+    c = r->connection;
+
+    ctx = c->log->data;
+    ctx->current_request = r;
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                   "http upstream request: \"%V?%V\"", &r->uri, &r->args);
+
+    if (ev->write) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler write");
+        u->write_event_handler(r, u);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler write over");
+
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler read");
+        u->read_event_handler(r, u);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_upstream_handler read over");
+    }
+
+    ngx_http_run_posted_requests(c);
 }
 
 static void ngx_http_upstream_next(ngx_http_request_t *r, ngx_http_upstream_t *u,
@@ -697,7 +735,7 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
     
 }
 
-static ngx_int_t ngx_http_upstream_reinit(ngx_http_request_t *r, ngx_http_upstream_t *u)
+static ngx_int_t ngx_http_tcp_reuse_upstream_reinit(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
     ngx_chain_t  *cl;
 

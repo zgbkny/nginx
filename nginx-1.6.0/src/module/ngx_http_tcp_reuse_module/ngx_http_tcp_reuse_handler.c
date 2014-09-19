@@ -80,7 +80,7 @@ void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *
 
 }
 
-void ngx_http_tcp_reuses_wev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
+void ngx_http_tcp_reuse_wev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
 	
 }
