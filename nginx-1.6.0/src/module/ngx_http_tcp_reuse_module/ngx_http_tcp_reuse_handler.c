@@ -13,6 +13,7 @@ static void ngx_http_tcp_reuse_finalize_request(ngx_http_request_t *r, ngx_int_t
 static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r);
 static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r);
 
+
 ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r) 
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_uptest_handler");
@@ -75,15 +76,6 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
 	
 }
 
-void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
-{
-
-}
-
-void ngx_http_tcp_reuse_wev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
-{
-	
-}
 
 static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 {
