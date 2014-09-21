@@ -16,7 +16,7 @@ static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r);
 
 ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r) 
 {
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_uptest_handler");
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_handler");
     // get http ctx's ngx_http_tcp_reuse_ctx_t
     ngx_http_tcp_reuse_ctx_t *myctx = ngx_http_get_module_ctx(r, ngx_http_tcp_reuse_module);
     if (myctx == NULL) {
@@ -45,7 +45,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
     }
 
     static struct sockaddr_in backendSockAddr;
-    struct hostent *pHost = gethostbyname((char *)"192.168.0.199");
+    struct hostent *pHost = gethostbyname((char *)"localhost");
     if (pHost == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
         return NGX_ERROR;
@@ -55,7 +55,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
     backendSockAddr.sin_port = htons((in_port_t)80);
     char *pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
 
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_uptest_handler. %s", pDmsIP);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_handler. %s", pDmsIP);
     backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
     myctx->backendServer.data = (u_char *)pDmsIP;
     myctx->backendServer.len = strlen(pDmsIP);
@@ -70,7 +70,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
 
     r->main->count++;
     ngx_http_tcp_reuse_upstream_init(r);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_uptest_handler %s", strerror(errno));
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_handler %s", strerror(errno));
     //must be NGX_DONE
     return NGX_DONE;
 	
@@ -79,7 +79,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
 
 static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uptest_upstream_create_request");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_create_request");
     static ngx_str_t backendQueryLine = ngx_string("GET /index.jsp HTTP/1.1\r\nHost: 192.168.0.199\r\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:32.0) Gecko/20100101 Firefox/32.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: zh-cn,zh;q=0.8,en-us;q=0.5,en;q=0.3\r\nAccept-Encoding: gzip, deflate\r\nConnection: keep-alive\r\n\r\n");
 
     ngx_int_t queryLineLen = backendQueryLine.len + r->args.len;
@@ -103,14 +103,14 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
     r->upstream->header_sent = 0;
 
     r->header_hash = 1;
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uptest_upstream_create_request over");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_create_request over");
     return NGX_OK;
 }
 
 
 static void ngx_http_tcp_reuse_finalize_request(ngx_http_request_t *r, ngx_int_t rc)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uptest_upstream_finalizeW_request");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_finalize_request");
 }
 
 static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
@@ -165,7 +165,7 @@ static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
 
 static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uptest_upstream_process_header");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "tcp_reuse_upstream_process_header");
     ngx_int_t                       rc;
     ngx_table_elt_t                *h;
     ngx_http_upstream_header_t     *hh;
