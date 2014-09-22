@@ -80,7 +80,67 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
 static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_create_request");
-    static ngx_str_t backendQueryLine = ngx_string("GET /index.jsp HTTP/1.1\r\nHost: 192.168.0.199\r\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:32.0) Gecko/20100101 Firefox/32.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: zh-cn,zh;q=0.8,en-us;q=0.5,en;q=0.3\r\nAccept-Encoding: gzip, deflate\r\nConnection: keep-alive\r\n\r\n");
+
+    size_t               len = 0;
+    ngx_uint_t           i = 0;
+    ngx_list_part_t     *part;
+    ngx_table_elt_t     *header;
+    ngx_buf_t           *bb;
+    ngx_chain_t         *cl;//, *body;
+
+    part = &r->headers_in.headers.part;
+    header = part->elts;
+
+    for (i = 0; ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+            part = part->next;
+            header = part->elts;
+            i = 0;
+        }
+        len += header[i].key.len + sizeof(": ") - 1
+             + header[i].value.len + sizeof(CRLF) - 1;
+    }
+
+    bb = ngx_create_temp_buf(r->pool, len);
+    
+    if (bb == NULL) {
+        return NGX_ERROR;
+    }
+
+    cl = ngx_alloc_chain_link(r->pool);
+    if (cl == NULL) {
+        return NGX_ERROR;
+    }
+
+    cl->buf = bb;
+
+    part = &r->headers_in.headers.part;
+    header = part->elts;
+
+    for (i = 0; ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+            part = part->next;
+            header = part->elts;
+            i = 0;
+        }
+        bb->last = ngx_copy(bb->last, header[i].key.data, header[i].key.len);
+        *bb->last++ = ':'; *bb->last++ = ' ';
+        bb->last = ngx_copy(bb->last, header[i].value.data, header[i].value.len);
+        *bb->last++ = CR; *bb->last++ = LF;
+    }
+
+    *bb->last++ = CR; *bb->last++ = LF;
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", bb->start);
+
+
+    static ngx_str_t backendQueryLine = ngx_string("GET / HTTP/1.1\r\nHost: 192.168.0.199\r\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:32.0) Gecko/20100101 Firefox/32.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: zh-cn,zh;q=0.8,en-us;q=0.5,en;q=0.3\r\nAccept-Encoding: gzip, deflate\r\nConnection: keep-alive\r\n\r\n");
 
     ngx_int_t queryLineLen = backendQueryLine.len + r->args.len;
     ngx_buf_t *b = ngx_create_temp_buf(r->pool, queryLineLen);
@@ -91,6 +151,8 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
     b->last = b->pos + queryLineLen;
 
     ngx_snprintf(b->pos, queryLineLen, (char *)backendQueryLine.data, &r->args);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "host:%s, %d", r->headers_in.host->value.data, r->headers_in.host->value.len);
+
     r->upstream->request_bufs = ngx_alloc_chain_link(r->pool);
     if (r->upstream->request_bufs == NULL) {
         return NGX_ERROR;
@@ -241,6 +303,12 @@ static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r)
                 ngx_str_null(&h->value);
                 h->lowcase_key = (u_char *) "date";
             }
+
+            // add reuseable
+            ngx_http_upstream_t *u = r->upstream;
+            ngx_connection_t *c = u->peer.connection;
+            c->reusable = 0;
+            // end reuseable
 
             return NGX_OK;
         }

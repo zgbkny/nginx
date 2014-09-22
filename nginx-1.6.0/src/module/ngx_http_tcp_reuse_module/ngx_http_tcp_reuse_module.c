@@ -105,7 +105,8 @@ void* ngx_http_tcp_reuse_create_loc_conf(ngx_conf_t* cf) {
     return conf;
 }
 
-char* ngx_http_tcp_reuse_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child) {
+char* ngx_http_tcp_reuse_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child)
+{
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_uptest_merge_loc_conf");
     ngx_http_tcp_reuse_conf_t* prev = parent;
     ngx_http_tcp_reuse_conf_t* conf = child;
