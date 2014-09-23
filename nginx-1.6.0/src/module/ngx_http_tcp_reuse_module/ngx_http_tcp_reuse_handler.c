@@ -45,7 +45,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
     }
 
     static struct sockaddr_in backendSockAddr;
-    struct hostent *pHost = gethostbyname((char *)"localhost");
+    struct hostent *pHost = gethostbyname((char *)"192.168.0.165");
     if (pHost == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
         return NGX_ERROR;
@@ -85,8 +85,11 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
     ngx_uint_t           i = 0;
     ngx_list_part_t     *part;
     ngx_table_elt_t     *header;
-    ngx_buf_t           *bb;
+    ngx_buf_t           *b;
     ngx_chain_t         *cl;//, *body;
+
+
+    len += r->request_line.len + 2;
 
     part = &r->headers_in.headers.part;
     header = part->elts;
@@ -100,13 +103,14 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
             header = part->elts;
             i = 0;
         }
-        len += header[i].key.len + sizeof(": ") - 1
-             + header[i].value.len + sizeof(CRLF) - 1;
+        len += header[i].key.len + sizeof(": ")
+             + header[i].value.len + sizeof(CRLF);
     }
 
-    bb = ngx_create_temp_buf(r->pool, len);
+
+    b = ngx_create_temp_buf(r->pool, len);
     
-    if (bb == NULL) {
+    if (b == NULL) {
         return NGX_ERROR;
     }
 
@@ -115,7 +119,10 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    cl->buf = bb;
+    cl->buf = b;
+
+    b->last = ngx_copy(b->last, r->request_line.data, r->request_line.len);
+    *b->last++ = CR; *b->last++ = LF;
 
     part = &r->headers_in.headers.part;
     header = part->elts;
@@ -129,36 +136,17 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
             header = part->elts;
             i = 0;
         }
-        bb->last = ngx_copy(bb->last, header[i].key.data, header[i].key.len);
-        *bb->last++ = ':'; *bb->last++ = ' ';
-        bb->last = ngx_copy(bb->last, header[i].value.data, header[i].value.len);
-        *bb->last++ = CR; *bb->last++ = LF;
+        b->last = ngx_copy(b->last, header[i].key.data, header[i].key.len);
+        *b->last++ = ':'; *b->last++ = ' ';
+        b->last = ngx_copy(b->last, header[i].value.data, header[i].value.len);
+        *b->last++ = CR; *b->last++ = LF;
     }
 
-    *bb->last++ = CR; *bb->last++ = LF;
+    *b->last++ = CR; *b->last++ = LF;
 
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", bb->start);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", b->start);
 
-
-    static ngx_str_t backendQueryLine = ngx_string("GET / HTTP/1.1\r\nHost: 192.168.0.199\r\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:32.0) Gecko/20100101 Firefox/32.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: zh-cn,zh;q=0.8,en-us;q=0.5,en;q=0.3\r\nAccept-Encoding: gzip, deflate\r\nConnection: keep-alive\r\n\r\n");
-
-    ngx_int_t queryLineLen = backendQueryLine.len + r->args.len;
-    ngx_buf_t *b = ngx_create_temp_buf(r->pool, queryLineLen);
-    if (b == NULL) {
-        return NGX_ERROR;
-    }
-
-    b->last = b->pos + queryLineLen;
-
-    ngx_snprintf(b->pos, queryLineLen, (char *)backendQueryLine.data, &r->args);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "host:%s, %d", r->headers_in.host->value.data, r->headers_in.host->value.len);
-
-    r->upstream->request_bufs = ngx_alloc_chain_link(r->pool);
-    if (r->upstream->request_bufs == NULL) {
-        return NGX_ERROR;
-    }
-
-    r->upstream->request_bufs->buf = b;
+    r->upstream->request_bufs = cl;
     r->upstream->request_bufs->next = NULL;
 
     r->upstream->request_sent = 0;
