@@ -45,7 +45,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
     }
 
     static struct sockaddr_in backendSockAddr;
-    struct hostent *pHost = gethostbyname((char *)"192.168.0.199");
+    struct hostent *pHost = gethostbyname((char *)"192.168.0.165");
     if (pHost == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
         return NGX_ERROR;
@@ -106,7 +106,7 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
         len += header[i].key.len + sizeof(": ")
              + header[i].value.len + sizeof(CRLF);
     }
-
+    len += sizeof(CRLF);
 
     b = ngx_create_temp_buf(r->pool, len);
     
@@ -165,7 +165,7 @@ static void ngx_http_tcp_reuse_finalize_request(ngx_http_request_t *r, ngx_int_t
 
 static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uptest_process_status_line");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_process_header");
     size_t               len;
     ngx_int_t            rc;
     ngx_http_upstream_t *u;
@@ -183,7 +183,6 @@ static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_parse_status_line again. %d", rc);
         return rc;
     }
-
     if (rc == NGX_ERROR) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "upstream sent no valid HTTP/1.0 header");
         r->http_version = NGX_HTTP_VERSION_9;

@@ -205,7 +205,7 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
 
     ngx_uint_t  flags;
     ngx_msec_t  timer, delta;
-
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "ngx_timer_resolution: %d", ngx_timer_resolution);
     if (ngx_timer_resolution) {
         timer = NGX_TIMER_INFINITE;
         flags = 0;

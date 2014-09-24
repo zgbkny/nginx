@@ -1402,11 +1402,13 @@ ngx_int_t
 ngx_http_core_content_phase(ngx_http_request_t *r,
     ngx_http_phase_handler_t *ph)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_core_content_phase");
     size_t     root;
     ngx_int_t  rc;
     ngx_str_t  path;
 
     if (r->content_handler) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_core_content_phase r->content_handler");
         r->write_event_handler = ngx_http_request_empty_handler;
         ngx_http_finalize_request(r, r->content_handler(r));
         return NGX_OK;
@@ -1416,7 +1418,7 @@ ngx_http_core_content_phase(ngx_http_request_t *r,
                    "content phase: %ui", r->phase_handler);
 
     rc = ph->handler(r);
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_core_content_phase ph->handler rc:%d", rc);
     if (rc != NGX_DECLINED) {
         ngx_http_finalize_request(r, rc);
         return NGX_OK;

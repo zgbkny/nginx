@@ -606,7 +606,7 @@ ngx_http_header_filter(ngx_http_request_t *r)
     }
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                   "%*s", (size_t) (b->last - b->pos), b->pos);
+                   "crazymind:%*s", (size_t) (b->last - b->pos), b->pos);
 
     /* the end of HTTP header */
     *b->last++ = CR; *b->last++ = LF;

@@ -63,6 +63,8 @@ static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r
 
 static void ngx_http_upstream_process_non_buffered_downstream(ngx_http_request_t *r);
 
+static ngx_int_t ngx_http_upstream_copy_header_line(ngx_http_request_t *r, ngx_table_elt_t *h, ngx_uint_t offset);
+
 //  = ngx_http_upstream_process_header in origin upstream
 void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
@@ -116,7 +118,7 @@ void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *
     for ( ;; ) {
 
         n = c->recv(c, u->buffer.last, u->buffer.end - u->buffer.last);
-
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "recv data:%s", u->buffer.start);
         if (n == NGX_AGAIN) {
 #if 0
             ngx_add_timer(rev, u->read_timeout);
@@ -270,6 +272,140 @@ static ngx_int_t ngx_http_upstream_intercept_errors(ngx_http_request_t *r,
 static ngx_int_t ngx_http_upstream_process_headers(ngx_http_request_t *r,
     ngx_http_upstream_t *u)
 {
+    ngx_str_t                       uri, args;
+    ngx_uint_t                      i, flags;
+    ngx_list_part_t                *part;
+    ngx_table_elt_t                *h;
+    ngx_http_upstream_header_t     *hh;
+    ngx_http_upstream_main_conf_t  *umcf;
+
+    umcf = ngx_http_get_module_main_conf(r, ngx_http_upstream_module);
+
+    if (u->headers_in.x_accel_redirect
+        && !(u->conf->ignore_headers & NGX_HTTP_UPSTREAM_IGN_XA_REDIRECT))
+    {
+        ngx_http_upstream_finalize_request(r, u, NGX_DECLINED);
+
+        part = &u->headers_in.headers.part;
+        h = part->elts;
+
+        for (i = 0; /* void */; i++) {
+
+            if (i >= part->nelts) {
+                if (part->next == NULL) {
+                    break;
+                }
+
+                part = part->next;
+                h = part->elts;
+                i = 0;
+            }
+
+            hh = ngx_hash_find(&umcf->headers_in_hash, h[i].hash,
+                               h[i].lowcase_key, h[i].key.len);
+
+            if (hh && hh->redirect) {
+                if (hh->copy_handler(r, &h[i], hh->conf) != NGX_OK) {
+                    ngx_http_finalize_request(r,
+                                              NGX_HTTP_INTERNAL_SERVER_ERROR);
+                    return NGX_DONE;
+                }
+            }
+        }
+
+        uri = u->headers_in.x_accel_redirect->value;
+        ngx_str_null(&args);
+        flags = NGX_HTTP_LOG_UNSAFE;
+
+        if (ngx_http_parse_unsafe_uri(r, &uri, &args, &flags) != NGX_OK) {
+            ngx_http_finalize_request(r, NGX_HTTP_NOT_FOUND);
+            return NGX_DONE;
+        }
+
+        if (r->method != NGX_HTTP_HEAD) {
+            r->method = NGX_HTTP_GET;
+        }
+
+        ngx_http_internal_redirect(r, &uri, &args);
+        ngx_http_finalize_request(r, NGX_DONE);
+        return NGX_DONE;
+    }
+
+    part = &u->headers_in.headers.part;
+    h = part->elts;
+
+    for (i = 0; /* void */; i++) {
+
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            h = part->elts;
+            i = 0;
+        }
+
+        if (ngx_hash_find(&u->conf->hide_headers_hash, h[i].hash,
+                          h[i].lowcase_key, h[i].key.len))
+        {
+            continue;
+        }
+
+        hh = ngx_hash_find(&umcf->headers_in_hash, h[i].hash,
+                           h[i].lowcase_key, h[i].key.len);
+
+        if (hh) {
+            if (hh->copy_handler(r, &h[i], hh->conf) != NGX_OK) {
+                ngx_http_upstream_finalize_request(r, u,
+                                               NGX_HTTP_INTERNAL_SERVER_ERROR);
+                return NGX_DONE;
+            }
+
+            continue;
+        }
+
+        if (ngx_http_upstream_copy_header_line(r, &h[i], 0) != NGX_OK) {
+            ngx_http_upstream_finalize_request(r, u,
+                                               NGX_HTTP_INTERNAL_SERVER_ERROR);
+            return NGX_DONE;
+        }
+    }
+
+    if (r->headers_out.server && r->headers_out.server->value.data == NULL) {
+        r->headers_out.server->hash = 0;
+    }
+
+    if (r->headers_out.date && r->headers_out.date->value.data == NULL) {
+        r->headers_out.date->hash = 0;
+    }
+
+    r->headers_out.status = u->headers_in.status_n;
+    r->headers_out.status_line = u->headers_in.status_line;
+
+    r->headers_out.content_length_n = u->headers_in.content_length_n;
+
+    u->length = -1;
+
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_upstream_copy_header_line(ngx_http_request_t *r, ngx_table_elt_t *h, ngx_uint_t offset)
+{
+    ngx_table_elt_t  *ho, **ph;
+
+    ho = ngx_list_push(&r->headers_out.headers);
+    if (ho == NULL) {
+        return NGX_ERROR;
+    }
+
+    *ho = *h;
+
+    if (offset) {
+        ph = (ngx_table_elt_t **) ((char *) &r->headers_out + offset);
+        *ph = ho;
+    }
+
     return NGX_OK;
 }
 
