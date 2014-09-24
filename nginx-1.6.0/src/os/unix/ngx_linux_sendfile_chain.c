@@ -37,6 +37,7 @@
 ngx_chain_t *
 ngx_linux_sendfile_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "ngx_linux_sendfile_chain");
     int            rc, tcp_nodelay;
     off_t          size, send, prev_send, aligned, sent, fprev;
     u_char        *prev;

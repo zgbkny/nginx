@@ -282,9 +282,9 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
     ngx_event_pipe_t          *p;
     ngx_connection_t          *c;
     ngx_http_core_loc_conf_t  *clcf;
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 0.1");
     rc = ngx_http_send_header(r);
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 0.2");
     if (rc == NGX_ERROR || rc > NGX_OK || r->post_action) {
         ngx_http_upstream_finalize_request(r, u, rc);
         return;
@@ -324,7 +324,7 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
     }
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 1");
     if (!u->buffering) {
 
         if (u->input_filter == NULL) {
@@ -338,7 +338,7 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
                              ngx_http_upstream_process_non_buffered_downstream;
 
         r->limit_rate = 0;
-
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 2");
         if (u->input_filter_init(u->input_filter_ctx) == NGX_ERROR) {
             ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
             return;
@@ -362,12 +362,12 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
         }
 
         n = u->buffer.last - u->buffer.pos;
-
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 3");
         if (n) {
             u->buffer.last = u->buffer.pos;
 
             u->state->response_length += n;
-
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 3.1");
             if (u->input_filter(u->input_filter_ctx, n) == NGX_ERROR) {
                 ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
                 return;
@@ -378,7 +378,7 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
         } else {
             u->buffer.pos = u->buffer.start;
             u->buffer.last = u->buffer.start;
-
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 3.2");
             if (ngx_http_send_special(r, NGX_HTTP_FLUSH) == NGX_ERROR) {
                 ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
                 return;

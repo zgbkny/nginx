@@ -194,6 +194,7 @@ ngx_http_header_t  ngx_http_headers_in[] = {
 void
 ngx_http_init_connection(ngx_connection_t *c)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "*client* ngx_http_init_connection");
     ngx_uint_t              i;
     ngx_event_t            *rev;
     struct sockaddr_in     *sin;
@@ -2258,6 +2259,7 @@ ngx_http_post_request(ngx_http_request_t *r, ngx_http_posted_request_t *pr)
 void
 ngx_http_finalize_request(ngx_http_request_t *r, ngx_int_t rc)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_finalize_request");
     ngx_connection_t          *c;
     ngx_http_request_t        *pr;
     ngx_http_core_loc_conf_t  *clcf;
@@ -2507,6 +2509,8 @@ ngx_http_terminate_handler(ngx_http_request_t *r)
 static void
 ngx_http_finalize_connection(ngx_http_request_t *r)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_finalize_connection");
     ngx_http_core_loc_conf_t  *clcf;
 
 #if (NGX_HTTP_SPDY)
@@ -2827,6 +2831,7 @@ closed:
 static void
 ngx_http_set_keepalive(ngx_http_request_t *r)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_set_keepalive");
     int                        tcp_nodelay;
     ngx_int_t                  i;
     ngx_buf_t                 *b, *f;
@@ -3310,6 +3315,7 @@ ngx_http_request_empty_handler(ngx_http_request_t *r)
 ngx_int_t
 ngx_http_send_special(ngx_http_request_t *r, ngx_uint_t flags)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_send_special");
     ngx_buf_t    *b;
     ngx_chain_t   out;
 

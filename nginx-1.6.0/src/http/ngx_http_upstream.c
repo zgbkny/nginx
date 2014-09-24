@@ -2514,6 +2514,7 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
 static void
 ngx_http_upstream_upgrade(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_upgrade");
     int                        tcp_nodelay;
     ngx_connection_t          *c;
     ngx_http_core_loc_conf_t  *clcf;
