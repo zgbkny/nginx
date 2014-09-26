@@ -17,6 +17,11 @@ static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r);
 ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r) 
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_handler");
+    
+    // open keepalive
+    r->keepalive = 1;
+
+
     // get http ctx's ngx_http_tcp_reuse_ctx_t
     ngx_http_tcp_reuse_ctx_t *myctx = ngx_http_get_module_ctx(r, ngx_http_tcp_reuse_module);
     if (myctx == NULL) {
@@ -178,7 +183,10 @@ static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
     }
 
     u = r->upstream;
+    ngx_memzero(&ctx->status, sizeof(ngx_http_tcp_reuse_ctx_t));
     rc = ngx_http_parse_status_line(r, &u->buffer, &ctx->status);
+    
+    
     if (rc == NGX_AGAIN) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_parse_status_line again. %d", rc);
         return rc;
@@ -219,19 +227,22 @@ static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r)
     ngx_table_elt_t                *h;
     ngx_http_upstream_header_t     *hh;
     ngx_http_upstream_main_conf_t  *umcf;
+//    ngx_uint_t           i = 0;
+//   ngx_list_part_t     *part;
+//   ngx_table_elt_t     *header;
 
     umcf = ngx_http_get_module_main_conf(r, ngx_http_upstream_module);
-
+    
     for ( ; ; ) {
+        
         rc = ngx_http_parse_header_line(r, &r->upstream->buffer, 1);
-
+        
         if (rc == NGX_OK) {
             h = ngx_list_push(&r->upstream->headers_in.headers);
 
             if (h == NULL) {
                 return NGX_ERROR;
             }
-
             h->hash = r->header_hash;
             h->key.len = r->header_name_end - r->header_name_start;
             h->value.len = r->header_end - r->header_start;
@@ -263,8 +274,9 @@ static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r)
 
             continue;
         }
-
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uu->headers_in.status_n:%d", r->upstream->headers_in.status_n);
         if (rc == NGX_HTTP_PARSE_HEADER_DONE) {
+
             if (r->upstream->headers_in.server == NULL) {
                 h = ngx_list_push(&r->upstream->headers_in.headers);
                 if (h == NULL) {

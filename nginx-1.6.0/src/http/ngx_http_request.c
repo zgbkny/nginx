@@ -2523,7 +2523,7 @@ ngx_http_finalize_connection(ngx_http_request_t *r)
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
     if (r->main->count != 1) {
-
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "r->main->count != 1");
         if (r->discard_body) {
             r->read_event_handler = ngx_http_discarded_request_body_handler;
             ngx_add_timer(r->connection->read, clcf->lingering_timeout);
@@ -2537,7 +2537,7 @@ ngx_http_finalize_connection(ngx_http_request_t *r)
         ngx_http_close_request(r, 0);
         return;
     }
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "keepalive:%d, timeout:%d", r->keepalive, clcf->keepalive_timeout);
     if (!ngx_terminate
          && !ngx_exiting
          && r->keepalive
@@ -3386,6 +3386,7 @@ ngx_http_post_action(ngx_http_request_t *r)
 static void
 ngx_http_close_request(ngx_http_request_t *r, ngx_int_t rc)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_close_request");
     ngx_connection_t  *c;
 
     r = r->main;
@@ -3525,6 +3526,7 @@ ngx_http_log_request(ngx_http_request_t *r)
 void
 ngx_http_close_connection(ngx_connection_t *c)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "ngx_http_close_connection");
     ngx_pool_t  *pool;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,

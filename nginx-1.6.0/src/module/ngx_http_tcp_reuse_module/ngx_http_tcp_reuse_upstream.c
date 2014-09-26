@@ -152,7 +152,7 @@ void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *
 #endif
 
         rc = u->process_header(r);
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "u->process_header ok. %d", rc);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "u->process_header ok. %d, length: %d", rc, u->length);
 
         if (rc == NGX_AGAIN) {
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "process_header again");
@@ -184,7 +184,7 @@ void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *
     }
 
     /* rc == NGX_OK */
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "u->headers_in.status_n:%d", u->headers_in.status_n);
     if (u->headers_in.status_n >= NGX_HTTP_SPECIAL_RESPONSE) {
 
         if (ngx_http_upstream_test_next(r, u) == NGX_OK) {
@@ -195,11 +195,11 @@ void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *
             return;
         }
     }
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "length:%d", u->length);
     if (ngx_http_upstream_process_headers(r, u) != NGX_OK) {
         return;
     }
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "length:%d", u->length);
     if (!r->subrequest_in_memory) {
         ngx_http_upstream_send_response(r, u);
         return;
@@ -385,7 +385,8 @@ static ngx_int_t ngx_http_upstream_process_headers(ngx_http_request_t *r,
 
     r->headers_out.content_length_n = u->headers_in.content_length_n;
 
-    u->length = -1;
+    //u->upsteam = -1;
+    u->length = u->headers_in.content_length_n;
 
     return NGX_OK;
 }
@@ -421,6 +422,7 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 0.1");
     rc = ngx_http_send_header(r);
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 0.2");
+    
     if (rc == NGX_ERROR || rc > NGX_OK || r->post_action) {
         ngx_http_upstream_finalize_request(r, u, rc);
         return;
@@ -475,11 +477,12 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
 
         r->limit_rate = 0;
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 2");
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "length:%d", u->length);
         if (u->input_filter_init(u->input_filter_ctx) == NGX_ERROR) {
             ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
             return;
         }
-
+        
         if (clcf->tcp_nodelay && c->tcp_nodelay == NGX_TCP_NODELAY_UNSET) {
             ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "tcp_nodelay");
 
@@ -496,7 +499,7 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
 
             c->tcp_nodelay = NGX_TCP_NODELAY_SET;
         }
-
+        
         n = u->buffer.last - u->buffer.pos;
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 3");
         if (n) {
@@ -504,11 +507,12 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
 
             u->state->response_length += n;
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 3.1");
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "length:%d", u->length);
             if (u->input_filter(u->input_filter_ctx, n) == NGX_ERROR) {
                 ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
                 return;
             }
-
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "length:%d", u->length);
             ngx_http_upstream_process_non_buffered_downstream(r);
 
         } else {
@@ -690,6 +694,7 @@ static void ngx_http_upstream_process_non_buffered_upstream(ngx_http_request_t *
 static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r,
     ngx_uint_t do_write)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_process_non_buffered_request");
     size_t                     size;
     ssize_t                    n;
     ngx_buf_t                 *b;
@@ -697,6 +702,7 @@ static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r
     ngx_connection_t          *downstream, *upstream;
     ngx_http_upstream_t       *u;
     ngx_http_core_loc_conf_t  *clcf;
+    size_t                     flag = do_write;
 
     u = r->upstream;
     downstream = r->connection;
@@ -711,8 +717,13 @@ static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r
         if (do_write) {
 
             if (u->out_bufs || u->busy_bufs) {
+                if (flag) {
+                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "send to downstream. u->length: %d", u->length);
+                }
                 rc = ngx_http_output_filter(r, u->out_bufs);
-
+                if (flag) {
+                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "send to downstream. u->length: %d", u->length);
+                }
                 if (rc == NGX_ERROR) {
                     ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
                     return;
