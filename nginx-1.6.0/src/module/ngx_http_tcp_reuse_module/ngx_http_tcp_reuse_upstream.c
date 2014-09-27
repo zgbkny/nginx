@@ -1633,8 +1633,12 @@ static void ngx_http_tcp_reuse_upstream_connect(ngx_http_request_t *r, ngx_http_
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_event_connect_peer tcp_reuse");
     if ((fd = ngx_tcp_reuse_get_active_conn()) != NGX_ERROR) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_tcp_reuse_reinit_conn");
         rc = ngx_tcp_reuse_reinit_conn(fd, &u->peer);
     } else {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_event_connect_peer");
         rc = ngx_event_connect_peer(&u->peer);
     }
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -1887,17 +1891,24 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "finalize http upstream request: %i", rc);
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "finalize http upstream request check 1");
     if (u->cleanup) {
         *u->cleanup = NULL;
         u->cleanup = NULL;
     }
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "finalize http upstream request check 2");
     if (u->resolved && u->resolved->ctx) {
-        ngx_resolve_name_done(u->resolved->ctx);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "finalize http upstream request check 2.0");
+        //ngx_resolve_name_done(u->resolved->ctx);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "finalize http upstream request check 2.1");
         u->resolved->ctx = NULL;
     }
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "finalize http upstream request check 3");
     if (u->state && u->state->response_sec) {
         tp = ngx_timeofday();
         u->state->response_sec = tp->sec - u->state->response_sec;
@@ -1907,14 +1918,15 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
             u->state->response_length = u->pipe->read_length;
         }
     }
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "finalize http upstream request check");
     u->finalize_request(r, rc);
 
     if (u->peer.free && u->peer.sockaddr) {
         u->peer.free(&u->peer, u->peer.data, 0);
         u->peer.sockaddr = NULL;
     }
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "u->peer.connection:%d", u->peer.connection == NULL);
     if (u->peer.connection) {
 
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -1935,14 +1947,16 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
             }
 
             if (ngx_del_conn) {
-                ngx_del_conn(u->peer.connection, NGX_CLOSE_EVENT);
-
+                ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_del_conn");
+                ngx_del_conn(u->peer.connection, NGX_DISABLE_EVENT);
             } else {
                 if (u->peer.connection->read->active || u->peer.connection->read->disabled) {
+                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_del_event read");
                     ngx_del_event(u->peer.connection->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
                 }
 
                 if (u->peer.connection->write->active || u->peer.connection->write->disabled) {
+                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_del_event write");
                     ngx_del_event(u->peer.connection->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
                 }
             }
