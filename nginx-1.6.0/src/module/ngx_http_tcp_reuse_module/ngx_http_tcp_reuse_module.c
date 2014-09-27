@@ -5,6 +5,7 @@
 #include "ngx_http_tcp_reuse_module.h"
 #include "ngx_http_tcp_reuse_handler.h"
 #include "ngx_http_tcp_reuse_upstream.h"
+#include "ngx_http_tcp_reuse_pool.h"
 
 char* ngx_http_tcp_reuse(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
@@ -71,6 +72,9 @@ ngx_module_t ngx_http_tcp_reuse_module = {
 char* ngx_http_tcp_reuse(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_tcp_reuse");
+
+    int rc = ngx_tcp_reuse_pool_init(cf->log);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_tcp_reuse_pool_init rc:%d", rc);
     ngx_http_core_loc_conf_t* clcf;
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
     clcf->handler = ngx_http_tcp_reuse_handler;
@@ -81,6 +85,8 @@ char* ngx_http_tcp_reuse(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
 void* ngx_http_tcp_reuse_create_loc_conf(ngx_conf_t* cf) {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_uptest_create_loc_conf");
     ngx_http_tcp_reuse_conf_t* conf;
+
+    
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_tcp_reuse_conf_t));
     if (conf == NULL) {

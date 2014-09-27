@@ -1462,6 +1462,7 @@ static void ngx_http_tcp_reuse_upstream_connect(ngx_http_request_t *r, ngx_http_
     ngx_int_t          rc;
     ngx_time_t        *tp;
     ngx_connection_t  *c;
+    ngx_socket_t       fd;
 
     r->connection->log->action = "connecting to upstream";
 
@@ -1484,8 +1485,12 @@ static void ngx_http_tcp_reuse_upstream_connect(ngx_http_request_t *r, ngx_http_
     u->state->response_sec = tp->sec;
     u->state->response_msec = tp->msec;
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_event_connect_peer");
-    rc = ngx_event_connect_peer(&u->peer);
+                   "ngx_event_connect_peer tcp_reuse");
+    if ((fd = ngx_tcp_reuse_get_active_conn()) != NGX_ERROR) {
+        rc = reinit_conn(fd, &u->peer);
+    } else {
+        rc = ngx_event_connect_peer(&u->peer);
+    }
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_event_connect_peer over");
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
