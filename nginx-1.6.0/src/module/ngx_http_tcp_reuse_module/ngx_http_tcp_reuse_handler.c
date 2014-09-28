@@ -115,7 +115,7 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
             header[i].value.len = 10;
         }
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "key:%s, value:%s", header[i].key.data, header[i].value.data);
-
+        
         len += header[i].key.len + sizeof(": ")
              + header[i].value.len + sizeof(CRLF);
     }
