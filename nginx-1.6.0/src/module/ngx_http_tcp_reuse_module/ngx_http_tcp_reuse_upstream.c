@@ -1750,7 +1750,7 @@ static void ngx_http_tcp_reuse_upstream_connect(ngx_http_request_t *r, ngx_http_
                    "ngx_http_tcp_reuse_upstream_send_request");
     ngx_http_tcp_reuse_upstream_send_request(r, u);
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_tcp_reuse_upstream_send_request over");
+                   "ngx_http_tcp_reuse_upstream_send_request over errno:%d", errno);
 }
 
 static void ngx_http_tcp_reuse_upstream_handler(ngx_event_t *ev)
