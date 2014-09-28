@@ -6,6 +6,7 @@
 #include "ngx_http_tcp_reuse_handler.h"
 #include "ngx_http_tcp_reuse_upstream.h"
 
+#define KEEPALIVE "keep-alive"
 
 static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r);
 
@@ -50,7 +51,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
     }
 
     static struct sockaddr_in backendSockAddr;
-    struct hostent *pHost = gethostbyname((char *)"localhost");
+    struct hostent *pHost = gethostbyname((char *)"192.168.5.200");
     if (pHost == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
         return NGX_ERROR;
@@ -108,6 +109,13 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
             header = part->elts;
             i = 0;
         }
+        
+        if (!ngx_strcmp(header[i].key.data, "Connection")) {
+            header[i].value.data = (u_char *)KEEPALIVE;
+            header[i].value.len = 10;
+        }
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "key:%s, value:%s", header[i].key.data, header[i].value.data);
+
         len += header[i].key.len + sizeof(": ")
              + header[i].value.len + sizeof(CRLF);
     }
