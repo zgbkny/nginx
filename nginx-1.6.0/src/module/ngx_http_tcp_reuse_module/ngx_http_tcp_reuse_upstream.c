@@ -1938,6 +1938,7 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
         }
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "connection close tcp_reuse : error:%d, close:%d, destroyed:%d", u->peer.connection->error, u->peer.connection->close, u->peer.connection->destroyed);
         if (!rc && ngx_tcp_reuse_put_active_conn(u->peer.connection->fd) == NGX_OK) {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "reuse");
             if (u->peer.connection->read->timer_set) {
                 ngx_del_timer(u->peer.connection->read);
             }
@@ -1961,6 +1962,7 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
                 }
             }
         } else {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "not reuse");
             ngx_close_connection(u->peer.connection);
         }
     }

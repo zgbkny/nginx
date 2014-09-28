@@ -43,6 +43,7 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 ngx_socket_t ngx_tcp_reuse_get_active_conn()
 {
 	ngx_socket_t fd = -1;
+	ngx_err_t    err;
 	u_char test[2];
 	while (!ngx_queue_empty(&active_conns)) {
 		ngx_queue_t *head_conn = ngx_queue_head(&active_conns);
@@ -68,7 +69,13 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn()
 			close(fd);
 			fd = -1;
 		} else {
-			break;
+			err = ngx_socket_errno;
+			if (err == NGX_EAGAIN || err == NGX_EINTR)
+				break;
+			else {
+				close(fd);
+				fd = -1;
+			}
 		}
 
 	}
