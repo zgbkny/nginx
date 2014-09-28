@@ -20,7 +20,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_handler");
     
     // open keepalive
-    r->keepalive = 1;
+    r->keepalive = 0;
 
 
     // get http ctx's ngx_http_tcp_reuse_ctx_t
