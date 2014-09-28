@@ -40,7 +40,7 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 }
 
 
-ngx_socket_t ngx_tcp_reuse_get_active_conn()
+ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 {
 	ngx_socket_t fd = -1;
 	ngx_err_t    err;
@@ -66,23 +66,26 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn()
 		ngx_queue_insert_tail(&empty_conns, &active_conn->q_elt);
 
 		if (recv(fd, test, 0, 0) == 0) {
+			ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "0 : errno:%d, %s", ngx_socket_errno, strerror(errno));
 			close(fd);
 			fd = -1;
 		} else {
+			ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "!0 : errno:%d, %s", ngx_socket_errno, strerror(errno));
 			err = ngx_socket_errno;
-			if (err == NGX_EAGAIN || err == NGX_EINTR)
+			if (err == 11)
 				break;
 			else {
 				close(fd);
 				fd = -1;
 			}
 		}
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "fd:%d", fd);
 
 	}
 	return fd;
 }
 
-int ngx_tcp_reuse_put_active_conn(ngx_socket_t fd)
+int ngx_tcp_reuse_put_active_conn(ngx_socket_t fd, ngx_log_t *log)
 {
 	ngx_tcp_reuse_conn_t *new_conn = NULL;
 	ngx_queue_t *head = NULL;
