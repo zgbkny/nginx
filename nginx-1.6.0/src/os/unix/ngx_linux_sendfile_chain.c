@@ -317,7 +317,7 @@ ngx_linux_sendfile_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
 
             sent = rc > 0 ? rc : 0;
 
-            ngx_log_debug1(NGX_LOG_DEBUG_EVENT, c->log, 0, "writev: %O", sent);
+            ngx_log_debug(NGX_LOG_DEBUG_EVENT, c->log, 0, "writev: %O, fd:%d", sent, c->fd);
         }
 
         if (send - prev_send == sent) {
