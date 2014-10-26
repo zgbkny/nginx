@@ -1,7 +1,7 @@
 #include "ngx_http_tcp_reuse_pool.h"
 
-#define ngx_tcp_reuse_pool_size 40960000
-#define ngx_tcp_reuse_conns_init_size 10000
+#define ngx_tcp_reuse_pool_size 409600
+#define ngx_tcp_reuse_conns_init_size 100
 
 static ngx_pool_t 		*ngx_reuse_pool;
 
