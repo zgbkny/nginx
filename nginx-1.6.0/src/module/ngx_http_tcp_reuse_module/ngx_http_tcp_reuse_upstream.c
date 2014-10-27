@@ -1,6 +1,6 @@
 #include "ngx_http_tcp_reuse_upstream.h"
-#include "ngx_http_tcp_reuse_handler.h"
 #include "ngx_http_tcp_reuse_pool.h"
+#include "ngx_http_tcp_reuse_handler.h"
 
 static ngx_http_upstream_next_t  ngx_http_upstream_next_errors[] = {
     { 500, NGX_HTTP_UPSTREAM_FT_HTTP_500 },

@@ -1,9 +1,10 @@
 #ifndef DDEBUG
-#ifndef DDEBUG
 #define DDEBUG
 #endif
 
-#include "ngx_http_tcp_reuse_module.h"
+#include "ngx_http_server_guard_module.h"
+#include "ngx_http_server_guard_process.h"
+#include "ngx_http_tcp_reuse_pool.h"
 #include "ngx_http_server_guard_handler.h"
 #include "ngx_http_tcp_reuse_upstream.h"
 
@@ -19,68 +20,91 @@ static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r);
 ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r) 
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler");
-    
+    ngx_int_t                        rc;
+    ngx_http_server_guard_ctx_t     *myctx;
+    ngx_http_server_guard_conf_t    *mycf;
+    ngx_http_upstream_t             *u;
+    static struct sockaddr_in        backendSockAddr;
+    struct hostent                  *pHost;
+    char                            *pDmsIP;
     // open keepalive
-    r->keepalive = 1;
+    //r->keepalive = 1;
 
-
-    // get http ctx's ngx_http_tcp_reuse_ctx_t
-    ngx_http_tcp_reuse_ctx_t *myctx = ngx_http_get_module_ctx(r, ngx_http_tcp_reuse_module);
+    mycf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
+    // get http ctx's ngx_http_server_guard_ctx_t
+    myctx = ngx_http_get_module_ctx(r, ngx_http_server_guard_module);
     if (myctx == NULL) {
-        myctx = ngx_palloc(r->pool, sizeof(ngx_http_tcp_reuse_ctx_t));
+        myctx = ngx_palloc(r->pool, sizeof(ngx_http_server_guard_ctx_t));
         if (myctx == NULL) {
             return NGX_ERROR;
         }
+        ngx_http_set_ctx(r, myctx, ngx_http_server_guard_module);
 
-        ngx_http_set_ctx(r, myctx, ngx_http_tcp_reuse_module);
+        // set backend server
+        myctx->backend_server = mycf->backend_server;
     }
 
-    if (ngx_http_upstream_create(r) != NGX_OK) {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_create() failed");
-        return NGX_ERROR;
+    if (check_overload() == SERVER_OVERLOAD) { // process when overload
+
+       
+        // 1:get queue time and id
+
+        // 2:save request
+
+        // 3:construct response, then send it
+
+        return NGX_DONE;
+
+    } else { // process when not overload
+        if (ngx_http_upstream_create(r) != NGX_OK) {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_create() failed");
+            return NGX_ERROR;
+        }
+
+        u = r->upstream;
+        u->conf = &mycf->upstream;
+        u->buffering = mycf->upstream.buffering;
+
+        u->resolved = (ngx_http_upstream_resolved_t *)ngx_palloc(r->pool, sizeof(ngx_http_upstream_resolved_t));
+        if (u->resolved == NULL) {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_palloc resolved error, %s", strerror(errno));
+            return NGX_ERROR;
+        }
+
+        pHost = gethostbyname((char *)mycf->backend_server.data);
+        if (pHost == NULL) {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
+            return NGX_ERROR;
+        }
+
+        backendSockAddr.sin_family = AF_INET;
+        backendSockAddr.sin_port = htons((in_port_t)80);
+        pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
+
+        backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
+        myctx->backend_server.data = (u_char *)pDmsIP;
+        myctx->backend_server.len = strlen(pDmsIP);
+
+        u->resolved->sockaddr = (struct sockaddr *)&backendSockAddr;
+        u->resolved->socklen = sizeof(struct sockaddr_in);
+        u->resolved->naddrs = 1;
+
+        u->create_request = ngx_http_tcp_reuse_create_request;
+        u->process_header = ngx_http_tcp_reuse_process_header;
+        u->finalize_request = ngx_http_tcp_reuse_finalize_request;
+
+        r->main->count++;
+        
+        rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
+
+        if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+            return rc;
+        }
+        //ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler %s", strerror(errno));
+        
+        //must be NGX_DONE
+        return NGX_DONE;
     }
-
-    ngx_http_tcp_reuse_conf_t *mycf = (ngx_http_tcp_reuse_conf_t *)ngx_http_get_module_loc_conf(r, ngx_http_tcp_reuse_module);
-    ngx_http_upstream_t *u = r->upstream;
-    u->conf = &mycf->upstream;
-    u->buffering = mycf->upstream.buffering;
-
-    u->resolved = (ngx_http_upstream_resolved_t *)ngx_palloc(r->pool, sizeof(ngx_http_upstream_resolved_t));
-    if (u->resolved == NULL) {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_palloc resolved error, %s", strerror(errno));
-        return NGX_ERROR;
-    }
-
-    static struct sockaddr_in backendSockAddr;
-    struct hostent *pHost = gethostbyname((char *)"192.168.5.200");
-    if (pHost == NULL) {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
-        return NGX_ERROR;
-    }
-
-    backendSockAddr.sin_family = AF_INET;
-    backendSockAddr.sin_port = htons((in_port_t)80);
-    char *pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
-
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler. %s", pDmsIP);
-    backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
-    myctx->backendServer.data = (u_char *)pDmsIP;
-    myctx->backendServer.len = strlen(pDmsIP);
-
-    u->resolved->sockaddr = (struct sockaddr *)&backendSockAddr;
-    u->resolved->socklen = sizeof(struct sockaddr_in);
-    u->resolved->naddrs = 1;
-
-    u->create_request = ngx_http_tcp_reuse_create_request;
-    u->process_header = ngx_http_tcp_reuse_process_header;
-    u->finalize_request = ngx_http_tcp_reuse_finalize_request;
-
-    r->main->count++;
-    ngx_http_tcp_reuse_upstream_init(r);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler %s", strerror(errno));
-    //must be NGX_DONE
-    return NGX_DONE;
-	
 }
 
 
@@ -88,12 +112,15 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_create_request");
 
-    size_t               len = 0;
-    ngx_uint_t           i = 0;
-    ngx_list_part_t     *part;
-    ngx_table_elt_t     *header;
-    ngx_buf_t           *b;
-    ngx_chain_t         *cl;//, *body;
+    size_t                           len = 0;
+    ngx_uint_t                       i = 0;
+    ngx_list_part_t                 *part;
+    ngx_table_elt_t                 *header;
+    ngx_buf_t                       *b;
+    ngx_chain_t                     *cl;//, *body;
+    ngx_http_server_guard_ctx_t     *ctx;
+    ngx_http_server_guard_conf_t    *sgcf;
+    
 
 
     len += r->request_line.len + 2;
@@ -184,7 +211,7 @@ static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
     ngx_int_t            rc;
     ngx_http_upstream_t *u;
 
-    ngx_http_tcp_reuse_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_tcp_reuse_module);
+    ngx_http_server_guard_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_server_guard_module);
 
     if (ctx == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uptest_process_status_line get ctx error");
@@ -192,7 +219,7 @@ static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
     }
 
     u = r->upstream;
-    ngx_memzero(&ctx->status, sizeof(ngx_http_tcp_reuse_ctx_t));
+    ngx_memzero(&ctx->status, sizeof(ngx_http_server_guard_ctx_t));
     rc = ngx_http_parse_status_line(r, &u->buffer, &ctx->status);
     
     

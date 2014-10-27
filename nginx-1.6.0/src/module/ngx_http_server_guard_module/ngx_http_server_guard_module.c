@@ -2,8 +2,12 @@
 #define DDEBUG 0
 #endif
 
+#include "ddebug.h"
 #include "ngx_http_server_guard_module.h"
 #include "ngx_http_server_guard_handler.h"
+#include "ngx_http_tcp_reuse_pool.h"
+#include <stdio.h>
+
 
 char* ngx_http_server_guard(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
@@ -28,7 +32,7 @@ ngx_str_t ngx_http_proxy_hide_headers[] = {
 static ngx_command_t ngx_http_server_guard_cmds[] = {
     {
         ngx_string("server_guard"), // The command name
-        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_HTTP_LMT_CONF | NGX_CONF_NOARGS,
+        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1234,
         ngx_http_server_guard, // The command handler
         NGX_HTTP_LOC_CONF_OFFSET,
         0,
@@ -70,9 +74,17 @@ ngx_module_t ngx_http_server_guard_module = {
 char* ngx_http_server_guard(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_server_guard");
+    ngx_http_server_guard_conf_t *mycf = conf;
 
-    int rc = ngx_tcp_reuse_pool_init(cf->log);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_tcp_reuse_pool_init rc:%d", rc);
+    /* cf->args is a ngx_array_t queue, every element in it is ngx_str_t.*/
+    ngx_str_t *value = cf->args->elts; 
+
+    if (cf->args->nelts > 1) {
+        mycf->backend_server = value[1];
+        dd("%s\n", value[1].data);
+    }
+
+    ngx_tcp_reuse_pool_init(cf->log);
     ngx_http_core_loc_conf_t* clcf;
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
     clcf->handler = ngx_http_server_guard_handler;
@@ -81,10 +93,7 @@ char* ngx_http_server_guard(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
 }
 
 void* ngx_http_server_guard_create_loc_conf(ngx_conf_t* cf) {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_uptest_create_loc_conf");
     ngx_http_server_guard_conf_t* conf;
-
-    
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_server_guard_conf_t));
     if (conf == NULL) {
@@ -110,7 +119,6 @@ void* ngx_http_server_guard_create_loc_conf(ngx_conf_t* cf) {
 
 char* ngx_http_server_guard_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_server_guard_merge_loc_conf");
     ngx_http_server_guard_conf_t* prev = parent;
     ngx_http_server_guard_conf_t* conf = child;
     

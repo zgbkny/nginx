@@ -1,5 +1,4 @@
 #include "ngx_http_tcp_reuse_upstream.h"
-#include "ngx_http_tcp_reuse_handler.h"
 #include "ngx_http_tcp_reuse_pool.h"
 
 static ngx_http_upstream_next_t  ngx_http_upstream_next_errors[] = {
