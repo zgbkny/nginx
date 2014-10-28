@@ -1584,7 +1584,6 @@ ngx_int_t
 ngx_http_parse_status_line(ngx_http_request_t *r, ngx_buf_t *b,
     ngx_http_status_t *status)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_parse_status_line");
     u_char   ch;
     u_char  *p;
     enum {
@@ -1607,7 +1606,6 @@ ngx_http_parse_status_line(ngx_http_request_t *r, ngx_buf_t *b,
 
     for (p = b->pos; p < b->last; p++) {
         ch = *p;
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ch:%d[%c]%d", ch, ch, state);
         switch (state) {
 
         /* "HTTP/" */
@@ -1711,7 +1709,6 @@ ngx_http_parse_status_line(ngx_http_request_t *r, ngx_buf_t *b,
 
         /* HTTP status code */
         case sw_status:
-            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "");
             if (ch == ' ') {
                 break;
             }
@@ -1721,7 +1718,6 @@ ngx_http_parse_status_line(ngx_http_request_t *r, ngx_buf_t *b,
             }
 
             status->code = status->code * 10 + ch - '0';
-            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "status->count:%d", status->count);
             if (++status->count == 3) {
 
                 state = sw_space_after_status;

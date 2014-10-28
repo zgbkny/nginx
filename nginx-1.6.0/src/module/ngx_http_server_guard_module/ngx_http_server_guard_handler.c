@@ -78,7 +78,7 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
         }
 
         backendSockAddr.sin_family = AF_INET;
-        backendSockAddr.sin_port = htons((in_port_t)80);
+        backendSockAddr.sin_port = htons((in_port_t)8080);
         pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
 
         backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
@@ -112,16 +112,31 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_create_request");
 
+    ngx_str_t                        method;
     size_t                           len = 0;
     ngx_uint_t                       i = 0;
     ngx_list_part_t                 *part;
     ngx_table_elt_t                 *header;
     ngx_buf_t                       *b;
-    ngx_chain_t                     *cl;//, *body;
-    ngx_http_server_guard_ctx_t     *ctx;
-    ngx_http_server_guard_conf_t    *sgcf;
+    ngx_chain_t                     *cl, *body;//, *body;
+    ngx_http_upstream_t             *u;
+    //ngx_http_server_guard_conf_t    *sgcf;
+    //ngx_http_server_guard_ctx_t     *ctx;  
+    
+    u = r->upstream;
+
+    //sgcf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
+
+    if (u->method.len) {
+        method = u->method;
+        method.len++;
+    } else {
+        method = r->method_name;
+        method.len++;
+    }
     
 
+    // cal request len
 
     len += r->request_line.len + 2;
 
@@ -148,6 +163,7 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
              + header[i].value.len + sizeof(CRLF);
     }
     len += sizeof(CRLF);
+    //len += r->headers_in.content_length_n;
 
     b = ngx_create_temp_buf(r->pool, len);
     
@@ -187,11 +203,32 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", b->start);
 
-    r->upstream->request_bufs = cl;
-    r->upstream->request_bufs->next = NULL;
+    
+    body = u->request_bufs;
+    u->request_bufs = cl;
+    while (body) {
 
-    r->upstream->request_sent = 0;
-    r->upstream->header_sent = 0;
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "body:%s", body->buf->start);
+        b = ngx_alloc_buf(r->pool);
+        if (b == NULL) {
+            return NGX_ERROR;
+        }
+        ngx_memcpy(b, body->buf, sizeof(ngx_buf_t));
+        cl->next = ngx_alloc_chain_link(r->pool);
+        if (cl->next == NULL) {
+            return NGX_ERROR;
+        }
+
+        cl = cl->next;
+        cl->buf = b;
+        body = body->next;
+    }
+
+    cl->next = NULL;
+    b->flush = 1;
+
+    u->request_sent = 0;
+    u->header_sent = 0;
 
     r->header_hash = 1;
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_create_request over");

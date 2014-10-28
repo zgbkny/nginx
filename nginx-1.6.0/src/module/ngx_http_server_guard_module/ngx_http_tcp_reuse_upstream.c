@@ -1754,7 +1754,7 @@ static void ngx_http_tcp_reuse_upstream_connect(ngx_http_request_t *r, ngx_http_
 
 static void ngx_http_tcp_reuse_upstream_handler(ngx_event_t *ev)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_tcp_reuse_upstream_handlerngx_http_tcp_reuse_upstream_handler");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_tcp_reuse_upstream_handler");
 
     ngx_connection_t     *c;
     ngx_http_request_t   *r;

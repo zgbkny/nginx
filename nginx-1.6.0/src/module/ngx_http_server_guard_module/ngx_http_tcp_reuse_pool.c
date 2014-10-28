@@ -1,5 +1,6 @@
 #include "ngx_http_tcp_reuse_pool.h"
 
+#define ngx_tcp_reuse_requests_init_size 100
 #define ngx_tcp_reuse_pool_size 409600
 #define ngx_tcp_reuse_conns_init_size 100
 
@@ -7,9 +8,15 @@ static ngx_pool_t 		*ngx_reuse_pool;
 
 static ngx_array_t 		 conns;
 
+static ngx_array_t       requests;
+
 static ngx_queue_t       empty_conns;
 
 static ngx_queue_t       active_conns;
+
+static ngx_queue_t		 empty_requests;
+
+static ngx_queue_t       delay_requests;
 
 static void ngx_tcp_reuse_event_handler(ngx_event_t *ev);
 
@@ -17,7 +24,10 @@ static void ngx_tcp_reuse_read_handler(ngx_tcp_reuse_conn_t *reuse_conn);
 
 static void ngx_tcp_reuse_write_handler(ngx_tcp_reuse_conn_t *reuse_conn);
 
+void ngx_tcp_reuse_statistic()
+{
 
+}
 
 int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 {
@@ -27,14 +37,23 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 		ngx_log_error(NGX_LOG_EMERG, log, 0, "could not create ngx_reuse_pool");
 		exit(1);
 	}
+
 	conns.elts = ngx_pcalloc(ngx_reuse_pool, ngx_tcp_reuse_conns_init_size * sizeof (ngx_tcp_reuse_conn_t));
 	conns.nelts = 0;
 	conns.size = sizeof (ngx_tcp_reuse_conn_t);
 	conns.nalloc = ngx_tcp_reuse_conns_init_size;
 	conns.pool = ngx_reuse_pool;
 
+	requests.elts = ngx_palloc(ngx_reuse_pool, ngx_tcp_reuse_requests_init_size * sizeof (ngx_tcp_reuse_request_t));
+	requests.nelts = 0;
+	requests.size = sizeof (ngx_tcp_reuse_request_t);
+	requests.nalloc = ngx_tcp_reuse_requests_init_size;
+	requests.pool = ngx_reuse_pool;
+
 	ngx_queue_init(&empty_conns);
 	ngx_queue_init(&active_conns);
+	ngx_queue_init(&delay_requests);
+	ngx_queue_init(&empty_requests);
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_pool_init ok");
 	return NGX_OK;
 }
@@ -106,6 +125,33 @@ int ngx_tcp_reuse_put_active_conn(ngx_socket_t fd, ngx_log_t *log)
 	new_conn->read.handler = ngx_tcp_reuse_event_handler;
 	new_conn->write.handler = ngx_tcp_reuse_event_handler;
 	return NGX_OK;
+}
+
+int ngx_tcp_reuse_put_delay_request(void *request, int *id)
+{
+	ngx_tcp_reuse_request_t *new_request = NULL;
+	ngx_queue_t *head = NULL;
+	if (ngx_queue_empty(&empty_requests)) {
+		new_request = ngx_array_push(&requests);
+		if (new_request == NULL) {
+			return NGX_ERROR;
+		}
+	} else {
+		head = ngx_queue_head(&empty_requests);
+		new_request = ngx_queue_data(head, ngx_tcp_reuse_request_t, q_elt);
+		ngx_queue_remove(&new_request->q_elt);
+	}
+	ngx_queue_insert_tail(&delay_requests, &new_request->q_elt);
+	new_request->data = request;
+
+	//set id
+	*id = new_request - (ngx_tcp_reuse_request_t *)requests.elts;
+	return NGX_OK;
+}
+
+void *ngx_tcp_reuse_get_delay_request_by_id(int id)
+{
+	return NULL;
 }
 
 static void ngx_tcp_reuse_event_handler(ngx_event_t *ev)
