@@ -8,6 +8,10 @@
 
 //static ngx_event_t check_event;
 
+static ngx_connection_t dummy;  
+
+static ngx_event_t ev;   
+
 //static void ngx_http_server_guard_process_handler();
 
 static void ngx_http_server_guard_process_delay(ngx_http_request_t *r, size_t id);
@@ -28,9 +32,36 @@ int check_overload()
 		return SERVER_NOTOVERLOAD;
 }
 
-void ngx_http_server_guard_init(ngx_log_t *log)
+static void ngx_http_hello_print(ngx_event_t *ev)   
+{  
+	dd("hello\n");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_hello_print");
+  
+    //ngx_add_timer(&ev, 1000); 
+    ngx_add_timer(ev, 1000);   
+}  
+
+void ngx_http_server_guard_init()
 {
+	dd("ngx_http_server_guard_initsdfs\n");
+
+	dummy.fd = (ngx_socket_t) -1;   
+  
+    ngx_memzero(&ev, sizeof(ngx_event_t));  
+  
+    ev.handler = ngx_http_hello_print;  
+    ev.log = ngx_cycle->log;  
+    ev.data = &dummy;  
+  
+    ngx_add_timer(&ev, 5000); 
+    dd("1\n"); 
+  
+    //return NGX_OK; 
 }
+
+
+  
+  
 
 void ngx_http_server_guard_process(ngx_http_request_t *r)
 {

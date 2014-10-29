@@ -6,6 +6,7 @@
 #include "ngx_http_server_guard_module.h"
 #include "ngx_http_server_guard_handler.h"
 #include "ngx_http_tcp_reuse_pool.h"
+#include "ngx_http_server_guard_process.h"
 #include <stdio.h>
 
 

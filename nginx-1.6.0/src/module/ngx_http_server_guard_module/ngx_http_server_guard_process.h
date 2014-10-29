@@ -11,5 +11,5 @@
 
 int check_overload();
 void ngx_http_server_guard_process(ngx_http_request_t *r);
-void ngx_http_server_guard_init(ngx_log_t *log);
+void ngx_http_server_guard_init();
 #endif /*NGX_HTTP_SERVER_GUARD_PROCESS_H*/

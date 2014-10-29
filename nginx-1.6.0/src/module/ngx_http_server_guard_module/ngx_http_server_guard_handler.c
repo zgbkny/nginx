@@ -27,6 +27,7 @@ static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes);
 
 ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r) 
 {
+    ngx_http_server_guard_init();
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler");
     ngx_int_t                        rc;
     ngx_http_server_guard_ctx_t     *myctx;

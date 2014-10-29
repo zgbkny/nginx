@@ -211,8 +211,12 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
         flags = 0;
 
     } else {
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "ngx_event_find_timer");
         timer = ngx_event_find_timer();
         flags = NGX_UPDATE_TIME;
+
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "timer: %d", timer);
+
 
 #if (NGX_THREADS)
 
@@ -244,6 +248,8 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
             }
         }
     }
+
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "timer: %M", timer);
 
     delta = ngx_current_msec;
 
