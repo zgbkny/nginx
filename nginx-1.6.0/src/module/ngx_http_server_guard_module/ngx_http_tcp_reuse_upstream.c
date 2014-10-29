@@ -67,6 +67,12 @@ static void ngx_http_upstream_process_non_buffered_downstream(ngx_http_request_t
 
 static ngx_int_t ngx_http_upstream_copy_header_line(ngx_http_request_t *r, ngx_table_elt_t *h, ngx_uint_t offset);
 
+static ngx_int_t ngx_http_upstream_non_buffered_filter_init(void *data);
+
+static ngx_int_t ngx_http_upstream_non_buffered_filter(void *data, ssize_t bytes);
+
+static void ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r, ngx_http_upstream_t *u);
+
 //  = ngx_http_upstream_process_header in origin upstream
 void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
@@ -208,7 +214,7 @@ void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *
     }
 
     /* subrequest content in memory */
-/*
+
     if (u->input_filter == NULL) {
         u->input_filter_init = ngx_http_upstream_non_buffered_filter_init;
         u->input_filter = ngx_http_upstream_non_buffered_filter;
@@ -240,7 +246,120 @@ void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *
 
     u->read_event_handler = ngx_http_upstream_process_body_in_memory;
 
-    ngx_http_upstream_process_body_in_memory(r, u);*/
+    ngx_http_upstream_process_body_in_memory(r, u);
+}
+
+static ngx_int_t ngx_http_upstream_non_buffered_filter_init(void *data)
+{
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_upstream_non_buffered_filter(void *data, ssize_t bytes)
+{
+    ngx_http_request_t      *r = data;
+
+    ngx_buf_t               *b;
+    ngx_chain_t             *cl, **ll;
+    ngx_http_upstream_t     *u;
+
+    u = r->upstream;
+
+    for (cl = u->out_bufs, ll = &u->out_bufs; cl; cl = cl->next) {
+        ll = &cl->next;
+    }
+
+    cl = ngx_chain_get_free_buf(r->pool, &u->free_bufs);
+    if (cl == NULL) {
+        return NGX_ERROR;
+    }
+
+    *ll = cl;
+
+    cl->buf->flush = 1;
+    cl->buf->memory = 1;
+
+    b = &u->buffer;
+
+    cl->buf->pos = b->last;
+    b->last += bytes;
+    cl->buf->last = b->last;
+    cl->buf->tag = u->output.tag;
+
+    if (u->length == -1) {
+        return NGX_OK;
+    }
+
+    u->length -= bytes;
+
+    return NGX_OK;
+}
+
+static void ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r, ngx_http_upstream_t *u)
+{
+    size_t                     size;
+    ssize_t                    n;
+    ngx_buf_t                 *b;
+    ngx_event_t               *rev;
+    ngx_connection_t          *c;
+
+    c = u->peer.connection;
+    rev = c->read;
+
+    if (rev->timedout) {
+        ngx_connection_error(c, NGX_ETIMEDOUT, "upstream timed out");
+        ngx_http_upstream_finalize_request(r, u, NGX_HTTP_GATEWAY_TIME_OUT);
+        return;
+    }
+
+    b = &u->buffer;
+
+    for ( ;; ) {
+        size = b->end - b->last;
+
+        if (size == 0) {
+            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "upstream buffer is too small to read response");
+            ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
+            return;
+        }
+
+        n = c->recv(c, b->last, size);
+
+        if (n == NGX_AGAIN) {
+            break;
+        }
+
+        if (n == 0 || n == NGX_ERROR) {
+            ngx_http_upstream_finalize_request(r, u, n);
+            return;
+        }
+
+        u->state->response_length += n;
+
+        if (u->input_filter(u->input_filter_ctx, n) == NGX_ERROR) {
+            ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
+            return;
+        }
+
+        if (!rev->ready) {
+            break;
+        }
+    }
+
+    if (u->length == 0) {
+        ngx_http_upstream_finalize_request(r, u, 0);
+        return;
+    }
+
+    if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+        ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
+        return;
+    }
+
+    if (rev->active) {
+        ngx_add_timer(rev, u->conf->read_timeout);
+    } else if (rev->timer_set) {
+        ngx_del_timer(rev);
+    }
 }
 
 static ngx_int_t ngx_http_upstream_test_next(ngx_http_request_t *r, ngx_http_upstream_t *u)
@@ -421,9 +540,7 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
     ngx_event_pipe_t          *p;
     ngx_connection_t          *c;
     ngx_http_core_loc_conf_t  *clcf;
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 0.1");
     rc = ngx_http_send_header(r);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 0.2");
     
     if (rc == NGX_ERROR || rc > NGX_OK || r->post_action) {
         ngx_http_upstream_finalize_request(r, u, rc);
@@ -464,7 +581,7 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
     }
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 1");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response buffering:%d", u->buffering);
     if (!u->buffering) {
 
         if (u->input_filter == NULL) {
@@ -822,50 +939,7 @@ static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r
     }
 }
 
-static ngx_int_t ngx_http_upstream_non_buffered_filter_init(void *data)
-{
-    return NGX_OK;
-}
 
-static ngx_int_t ngx_http_upstream_non_buffered_filter(void *data, ssize_t bytes)
-{
-    ngx_http_request_t  *r = data;
-
-    ngx_buf_t            *b;
-    ngx_chain_t          *cl, **ll;
-    ngx_http_upstream_t  *u;
-
-    u = r->upstream;
-
-    for (cl = u->out_bufs, ll = &u->out_bufs; cl; cl = cl->next) {
-        ll = &cl->next;
-    }
-
-    cl = ngx_chain_get_free_buf(r->pool, &u->free_bufs);
-    if (cl == NULL) {
-        return NGX_ERROR;
-    }
-
-    *ll = cl;
-
-    cl->buf->flush = 1;
-    cl->buf->memory = 1;
-
-    b = &u->buffer;
-
-    cl->buf->pos = b->last;
-    b->last += bytes;
-    cl->buf->last = b->last;
-    cl->buf->tag = u->output.tag;
-
-    if (u->length == -1) {
-        return NGX_OK;
-    }
-
-    u->length -= bytes;
-
-    return NGX_OK;
-}
 
 void ngx_http_tcp_reuse_wev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
@@ -1629,21 +1703,11 @@ static void ngx_http_tcp_reuse_upstream_connect(ngx_http_request_t *r, ngx_http_
     tp = ngx_timeofday();
     u->state->response_sec = tp->sec;
     u->state->response_msec = tp->msec;
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_event_connect_peer tcp_reuse");
     if ((fd = ngx_tcp_reuse_get_active_conn(r->connection->log)) != NGX_ERROR) {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_tcp_reuse_reinit_conn");
         rc = ngx_tcp_reuse_reinit_conn(fd, &u->peer);
     } else {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_event_connect_peer");
         rc = ngx_event_connect_peer(&u->peer);
     }
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_event_connect_peer over");
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "http upstream connect: %i", rc);
 
     if (rc == NGX_ERROR) {
         ngx_http_upstream_finalize_request(r, u,
@@ -1665,8 +1729,6 @@ static void ngx_http_tcp_reuse_upstream_connect(ngx_http_request_t *r, ngx_http_
     }
 
     /* rc == NGX_OK || rc == NGX_AGAIN || rc == NGX_DONE */
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "rc == NGX_OK || rc == NGX_AGAIN || rc == NGX_DONE");
     c = u->peer.connection;
 
     c->data = r;
@@ -1745,11 +1807,7 @@ static void ngx_http_tcp_reuse_upstream_connect(ngx_http_request_t *r, ngx_http_
         return;
     }
 
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_tcp_reuse_upstream_send_request");
     ngx_http_tcp_reuse_upstream_send_request(r, u);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_tcp_reuse_upstream_send_request over errno:%d", errno);
 }
 
 static void ngx_http_tcp_reuse_upstream_handler(ngx_event_t *ev)

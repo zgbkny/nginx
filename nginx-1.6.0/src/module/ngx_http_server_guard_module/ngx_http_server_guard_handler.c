@@ -10,11 +10,19 @@
 
 #define KEEPALIVE "keep-alive"
 
-static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r);
+#define overload_uri "/overload_request "
 
+
+ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r);
+
+static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r);
 static void ngx_http_tcp_reuse_finalize_request(ngx_http_request_t *r, ngx_int_t rc);
 static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r);
 static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r);
+
+static ngx_int_t ngx_http_server_guard_input_filter_init(void *data);
+
+static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes);
 
 
 ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r) 
@@ -23,13 +31,26 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
     ngx_int_t                        rc;
     ngx_http_server_guard_ctx_t     *myctx;
     ngx_http_server_guard_conf_t    *mycf;
-    ngx_http_upstream_t             *u;
-    static struct sockaddr_in        backendSockAddr;
-    struct hostent                  *pHost;
-    char                            *pDmsIP;
+    int                              id = -1;
+    size_t                           wait_seconds = 0;
+    ngx_buf_t                       *b;
+    ngx_chain_t                      out[2];
+    char                             data[100];
     // open keepalive
     //r->keepalive = 1;
 
+    //check whether this request is a overload second request
+    if (ngx_strncmp(r->uri.data, overload_uri, strlen(overload_uri)) == 0) {
+        rc = ngx_http_read_client_request_body(r, ngx_http_server_guard_process);
+
+        if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+            return rc;
+        }
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler r->main :%d", r->main->count);
+        
+        return NGX_DONE;
+    }
+    
     mycf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
     // get http ctx's ngx_http_server_guard_ctx_t
     myctx = ngx_http_get_module_ctx(r, ngx_http_server_guard_module);
@@ -45,66 +66,116 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
     }
 
     if (check_overload() == SERVER_OVERLOAD) { // process when overload
+        // 1:get queue time 
+        wait_seconds = ngx_tcp_reuse_get_queue_time();
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "wait_seconds:%d", wait_seconds);
+        if (wait_seconds == 0) {
+            return NGX_ERROR;
+        }
+        // 2:save request and get id
+        if (ngx_tcp_reuse_put_delay_request(r, &id, r->connection->log) == NGX_OK) {
+            if (id < 0) {
+                return NGX_ERROR;
+            } else {
 
-       
-        // 1:get queue time and id
-
-        // 2:save request
-
+            }
+        } else {
+            return NGX_ERROR;
+        }
         // 3:construct response, then send it
+        r->headers_out.content_type.len = sizeof("text/plain") - 1;
+        r->headers_out.content_type.data = (u_char*)"text/plain";
 
-        return NGX_DONE;
+        sprintf(data, "id=%d&time=%d", id, wait_seconds);
 
-    } else { // process when not overload
-        if (ngx_http_upstream_create(r) != NGX_OK) {
-            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_create() failed");
-            return NGX_ERROR;
-        }
+        b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
 
-        u = r->upstream;
-        u->conf = &mycf->upstream;
-        u->buffering = mycf->upstream.buffering;
+        out[0].buf = b;
+        out[0].next = NULL;
 
-        u->resolved = (ngx_http_upstream_resolved_t *)ngx_palloc(r->pool, sizeof(ngx_http_upstream_resolved_t));
-        if (u->resolved == NULL) {
-            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_palloc resolved error, %s", strerror(errno));
-            return NGX_ERROR;
-        }
+        b->pos = (u_char*)data;
+        b->last = b->pos + strlen(data);
+        b->memory = 1;
+        b->last_buf = 1;
 
-        pHost = gethostbyname((char *)mycf->backend_server.data);
-        if (pHost == NULL) {
-            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
-            return NGX_ERROR;
-        }
-
-        backendSockAddr.sin_family = AF_INET;
-        backendSockAddr.sin_port = htons((in_port_t)8080);
-        pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
-
-        backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
-        myctx->backend_server.data = (u_char *)pDmsIP;
-        myctx->backend_server.len = strlen(pDmsIP);
-
-        u->resolved->sockaddr = (struct sockaddr *)&backendSockAddr;
-        u->resolved->socklen = sizeof(struct sockaddr_in);
-        u->resolved->naddrs = 1;
-
-        u->create_request = ngx_http_tcp_reuse_create_request;
-        u->process_header = ngx_http_tcp_reuse_process_header;
-        u->finalize_request = ngx_http_tcp_reuse_finalize_request;
-
-        r->main->count++;
-        
-        rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
-
-        if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+        r->headers_out.status = NGX_HTTP_OK;
+        r->headers_out.content_length_n = strlen(data);
+        rc = ngx_http_send_header(r);
+        if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
             return rc;
         }
-        //ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler %s", strerror(errno));
-        
-        //must be NGX_DONE
-        return NGX_DONE;
+
+        return ngx_http_output_filter(r, &out[0]);
+
+    } else { // process when not overload
+        return ngx_http_server_guard_normal(r);
     }
+}
+
+ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r)
+{
+    ngx_int_t                        rc;
+    ngx_http_server_guard_ctx_t     *myctx;
+    ngx_http_server_guard_conf_t    *mycf;
+    ngx_http_upstream_t             *u;
+    static struct sockaddr_in        backendSockAddr;
+    struct hostent                  *pHost;
+    char                            *pDmsIP;
+    
+
+    mycf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
+    // get http ctx's ngx_http_server_guard_ctx_t
+    myctx = ngx_http_get_module_ctx(r, ngx_http_server_guard_module);
+    if (ngx_http_upstream_create(r) != NGX_OK) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_create() failed");
+        return NGX_ERROR;
+    }
+
+    u = r->upstream;
+    u->conf = &mycf->upstream;
+    u->buffering = mycf->upstream.buffering;
+
+    u->resolved = (ngx_http_upstream_resolved_t *)ngx_palloc(r->pool, sizeof(ngx_http_upstream_resolved_t));
+    if (u->resolved == NULL) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_palloc resolved error, %s", strerror(errno));
+        return NGX_ERROR;
+    }
+
+    pHost = gethostbyname((char *)mycf->backend_server.data);
+    if (pHost == NULL) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
+        return NGX_ERROR;
+    }
+
+    backendSockAddr.sin_family = AF_INET;
+    backendSockAddr.sin_port = htons((in_port_t)80);
+    pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
+
+    backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
+    myctx->backend_server.data = (u_char *)pDmsIP;
+    myctx->backend_server.len = strlen(pDmsIP);
+
+    u->resolved->sockaddr = (struct sockaddr *)&backendSockAddr;
+    u->resolved->socklen = sizeof(struct sockaddr_in);
+    u->resolved->naddrs = 1;
+
+    u->create_request = ngx_http_tcp_reuse_create_request;
+    u->process_header = ngx_http_tcp_reuse_process_header;
+    u->finalize_request = ngx_http_tcp_reuse_finalize_request;
+
+    u->input_filter_init = ngx_http_server_guard_input_filter_init;
+    u->input_filter = ngx_http_server_guard_input_filter;
+    u->input_filter_ctx = r;
+
+    rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
+
+    if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+        return rc;
+    }
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler r->main :%d", r->main->count);
+    
+    //must be NGX_DONE
+    return NGX_DONE;
 }
 
 
@@ -392,6 +463,56 @@ static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r)
         return NGX_HTTP_UPSTREAM_INVALID_HEADER;
     }
 }
+
+static ngx_int_t ngx_http_server_guard_input_filter_init(void *data)
+{
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes)
+{
+    ngx_http_request_t      *r = data;
+
+    ngx_buf_t               *b;
+    ngx_chain_t             *cl, **ll;
+    ngx_http_upstream_t     *u;
+
+    u = r->upstream;
+
+    for (cl = u->out_bufs, ll = &u->out_bufs; cl; cl = cl->next) {
+        ll = &cl->next;
+    }
+
+    cl = ngx_chain_get_free_buf(r->pool, &u->free_bufs);
+    if (cl == NULL) {
+        return NGX_ERROR;
+    }
+
+    *ll = cl;
+
+    cl->buf->flush = 1;
+    cl->buf->memory = 1;
+
+    b = &u->buffer;
+
+    cl->buf->pos = b->last;
+    b->last += bytes;
+    cl->buf->last = b->last;
+    cl->buf->tag = u->output.tag;
+
+    if (u->length == -1) {
+        return NGX_OK;
+    }
+
+    u->length -= bytes;
+
+    if (u->length == 0) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_input_filter r->out:%d", r->out);
+    }
+
+    return NGX_OK;
+}
+
 
 
 
