@@ -27,7 +27,8 @@ static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes);
 
 ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r) 
 {
-    ngx_http_server_guard_init();
+    //ngx_http_server_guard_init();
+
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler");
     ngx_int_t                        rc;
     ngx_http_server_guard_ctx_t     *myctx;
@@ -73,6 +74,7 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
         if (wait_seconds == 0) {
             return NGX_ERROR;
         }
+
         // 2:save request and get id
         if (ngx_tcp_reuse_put_delay_request(r, &id, r->connection->log) == NGX_OK) {
             if (id < 0) {
@@ -123,14 +125,21 @@ ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r)
     struct hostent                  *pHost;
     char                            *pDmsIP;
     
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_normal");
 
     mycf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
     // get http ctx's ngx_http_server_guard_ctx_t
     myctx = ngx_http_get_module_ctx(r, ngx_http_server_guard_module);
+
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_normal 00");
     if (ngx_http_upstream_create(r) != NGX_OK) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_create() failed");
         return NGX_ERROR;
     }
+
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_normal 0");
 
     u = r->upstream;
     u->conf = &mycf->upstream;
@@ -141,6 +150,10 @@ ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r)
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_palloc resolved error, %s", strerror(errno));
         return NGX_ERROR;
     }
+
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_normal 1");
+
 
     pHost = gethostbyname((char *)mycf->backend_server.data);
     if (pHost == NULL) {
@@ -167,6 +180,10 @@ ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r)
     u->input_filter_init = ngx_http_server_guard_input_filter_init;
     u->input_filter = ngx_http_server_guard_input_filter;
     u->input_filter_ctx = r;
+
+    
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler before recv body");
+    
 
     rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
 
@@ -509,6 +526,9 @@ static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes)
 
     if (u->length == 0) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_input_filter r->out:%d", r->out);
+
+        r->out = u->out_bufs;
+        u->out_bufs = NULL;
     }
 
     return NGX_OK;

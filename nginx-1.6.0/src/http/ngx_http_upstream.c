@@ -405,6 +405,7 @@ ngx_conf_bitmask_t  ngx_http_upstream_ignore_headers_masks[] = {
 ngx_int_t
 ngx_http_upstream_create(ngx_http_request_t *r)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "check 1");
     ngx_http_upstream_t  *u;
 
     u = r->upstream;
@@ -413,13 +414,17 @@ ngx_http_upstream_create(ngx_http_request_t *r)
         r->main->count++;
         ngx_http_upstream_cleanup(r);
     }
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "check 2 r->pool:%d", r->pool);
 
     u = ngx_pcalloc(r->pool, sizeof(ngx_http_upstream_t));
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "check 3");
     if (u == NULL) {
         return NGX_ERROR;
     }
 
     r->upstream = u;
+    
 
     u->peer.log = r->connection->log;
     u->peer.log_error = NGX_ERROR_ERR;

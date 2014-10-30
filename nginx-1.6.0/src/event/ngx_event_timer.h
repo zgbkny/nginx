@@ -59,8 +59,7 @@ static ngx_inline void
 ngx_event_add_timer(ngx_event_t *ev, ngx_msec_t timer)
 {
     ngx_msec_t      key;
-    ngx_msec_int_t  diff;
-    
+    ngx_msec_int_t  diff;    
     key = ngx_current_msec + timer;
     if (ev->timer_set) {
 

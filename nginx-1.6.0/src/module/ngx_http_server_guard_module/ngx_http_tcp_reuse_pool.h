@@ -14,6 +14,8 @@ typedef struct ngx_tcp_reuse_request_s		 ngx_tcp_reuse_request_t;
 
 typedef void(*ngx_tcp_reuse_pool_handler_pt) (ngx_tcp_reuse_conn_t *c);
 
+typedef void(*ngx_delay_reqeust_done_handler_pt) (ngx_http_request_t *r, ngx_http_request_t *second_r);
+
 struct ngx_tcp_reuse_conn_s{
 	void               						*data;
     ngx_event_t        						 read;
@@ -30,6 +32,8 @@ struct ngx_tcp_reuse_conn_s{
 
 struct ngx_tcp_reuse_request_s {
 	void									*data;
+	ngx_http_request_t 						*second_r;
+	ngx_delay_reqeust_done_handler_pt		*done_handler;
 	size_t									 state;
 	ngx_queue_t 							 q_elt;
 };
@@ -48,10 +52,14 @@ size_t ngx_tcp_reuse_get_queue_time();
 
 size_t ngx_tcp_reuse_get_request_state(size_t id);
 
-void *ngx_tcp_reuse_get_delay_request_by_id(int id);
+void *ngx_tcp_reuse_get_request_by_id(size_t id);
+
+int ngx_tcp_reuse_check_processing_request_by_id(size_t id);
 
 
 void *ngx_tcp_reuse_get_delay_request();
+
+void *ngx_tcp_reuse_get_processing_request();
 
 void *ngx_tcp_reuse_delay_request_head();
 

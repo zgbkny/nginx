@@ -6,7 +6,6 @@
 #define ngx_tcp_reuse_pool_size 409600
 #define ngx_tcp_reuse_conns_init_size 100
 
-static ngx_msec_t check_timeout = 4000; // ms
 
 static ngx_pool_t 		*ngx_reuse_pool;
 
@@ -33,7 +32,6 @@ static int delay_requests_count;
 //static int wait_requests_count;
 
 
-static void ngx_tcp_reuse_delay_request_timeout_handler(ngx_event_t *ev);
 
 static void ngx_tcp_reuse_event_handler(ngx_event_t *ev);
 
@@ -171,6 +169,9 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *request, int *id, ngx_lo
 {
 	ngx_tcp_reuse_request_t *new_request = NULL;
 	ngx_queue_t *head = NULL;
+
+	request->main->count++;
+
 	if (ngx_queue_empty(&empty_requests)) {
 		new_request = ngx_array_push(&requests);
 		if (new_request == NULL) {
@@ -188,11 +189,6 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *request, int *id, ngx_lo
 	//set id
 	*id = new_request - (ngx_tcp_reuse_request_t *)requests.elts;
 
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "before init");
-	//ngx_http_server_guard_init(log);
-	request->connection->read->handler = ngx_tcp_reuse_delay_request_timeout_handler;
-	ngx_add_timer(request->connection->read, check_timeout);
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_put_delay_request");
 	delay_requests_count++;
 	return NGX_OK;
 }
@@ -214,6 +210,29 @@ void *ngx_tcp_reuse_get_delay_request()
 	return r;
 }
 
+void *ngx_tcp_reuse_get_processing_request()
+{
+	ngx_http_request_t *r = NULL;
+
+	if (!ngx_queue_empty(&processing_requests)) {
+		ngx_queue_t *head_request = ngx_queue_head(&processing_requests);
+		ngx_tcp_reuse_request_t *trr = ngx_queue_data(head_request, ngx_tcp_reuse_request_t, q_elt);
+		r = trr->data;
+	}
+	return r;
+}
+
+int ngx_tcp_reuse_check_processing_request_by_id(size_t id)
+{
+	ngx_tcp_reuse_request_t *requests_array = requests.elts;
+	ngx_http_request_t      *r = requests_array[id].data;
+	if (r->out) {
+		return NGX_OK;
+	} else 
+		return NGX_ERROR;
+}
+
+
 void *ngx_tcp_reuse_delay_request_head()
 {
 	return NULL;
@@ -229,15 +248,15 @@ void *ngx_tcp_reuse_done_request_head()
 	return NULL;
 }
 
-void *ngx_tcp_reuse_get_delay_request_by_id(int id)
+void *ngx_tcp_reuse_get_request_by_id(size_t id)
 {
-	return NULL;
+	ngx_tcp_reuse_request_t *requests_array = requests.elts;
+	ngx_http_request_t      *r = requests_array[id].data;
+	ngx_queue_remove(&(requests_array[id].q_elt));
+	ngx_queue_insert_tail(&empty_requests, &(requests_array[id].q_elt));
+	return r;
 }
 
-static void ngx_tcp_reuse_delay_request_timeout_handler(ngx_event_t *ev)
-{
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_tcp_reuse_delay_request_timeout_handler");
-}
 
 static void ngx_tcp_reuse_event_handler(ngx_event_t *ev)
 {
