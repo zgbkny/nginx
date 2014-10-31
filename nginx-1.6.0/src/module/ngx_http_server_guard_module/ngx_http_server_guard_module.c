@@ -108,7 +108,7 @@ void* ngx_http_server_guard_create_loc_conf(ngx_conf_t* cf) {
     conf->upstream.buffering = 0;
     conf->upstream.bufs.num = 8;
     conf->upstream.bufs.size = ngx_pagesize;
-    conf->upstream.buffer_size = 1024 * 2;
+    conf->upstream.buffer_size = 1024 * 100;
     conf->upstream.busy_buffers_size = 2 * ngx_pagesize;
     conf->upstream.temp_file_write_size = 2 * ngx_pagesize;
     conf->upstream.max_temp_file_size = 1024 * 1024 * 1024;

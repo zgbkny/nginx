@@ -40,6 +40,59 @@ int check_overload()
 	else 
 		return SERVER_NOTOVERLOAD;
 }
+
+void ngx_http_server_guard_close_connection(ngx_connection_t *c)
+{
+	ngx_err_t 			err;
+	ngx_uint_t			log_error;
+	ngx_socket_t   		fd;
+
+	if (c->fd == (ngx_socket_t)-1) {
+		ngx_log_error(NGX_LOG_ALERT, c->log, 0, "connection closed");
+		return;
+	}
+	if (c->read->timer_set) {
+		ngx_del_timer(c->read);
+	}
+	if (c->write->timer_set) {
+		ngx_del_timer(c->write);
+	}
+
+	if (ngx_del_conn) {
+		ngx_del_conn(c, NGX_CLOSE_EVENT);
+	} else {
+		if (c->read->active || c->read->disabled) {
+			ngx_del_event(c->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+		}
+
+		if (c->write->active || c->write->disabled) {
+			ngx_del_event(c->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
+		}
+	}
+
+	if (c->read_prev) {
+		ngx_delete_posted_event(c->read);
+	}
+
+	if (c->write_prev) {
+		ngx_delete_posted_event(c->write);
+	}
+	c->read->closed = 1;
+	c->write->closed = 1;
+
+	ngx_reusable_connection(c, 0);
+
+	log_err = c->log_error;
+
+	ngx_free_connection(c);
+
+	fd = c->fd;
+	c->fd = (ngx_socket_t)-1;
+	ngx_close_socket(fd);
+
+}
+
+
 static void ngx_http_server_guard_processing_timeout_handler(ngx_event_t *ev)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_server_guard_processing_timeout_handler");
@@ -142,6 +195,8 @@ static void ngx_http_server_guard_process_handler()
 // this is the handler when reqeust is not handle 
 static void ngx_http_server_guard_process_delay(ngx_http_request_t *r, size_t id)
 {
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_delay");
+
 	ngx_http_request_t *origin_r = NULL;
 	origin_r = ngx_tcp_reuse_get_request_by_id(id);
 	origin_r->connection->fd = r->connection->fd;
@@ -162,6 +217,8 @@ static void ngx_http_server_guard_process_processing(ngx_http_request_t *r, size
 
 static void ngx_http_server_guard_process_done(ngx_http_request_t *r, size_t id)
 {
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_done");
+
 	ngx_http_request_t *origin_r = NULL;
 	//if (ngx_tcp_reuse_check_processing_request_by_id(id) == NGX_OK) {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_done");
@@ -173,6 +230,7 @@ static void ngx_http_server_guard_process_done(ngx_http_request_t *r, size_t id)
 
 static void ngx_http_server_guard_process_error(ngx_http_request_t *r, size_t id)
 {
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_error");
 	ngx_tcp_reuse_get_request_by_id(id);
 	r->main->count = 1;
 	ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
