@@ -305,6 +305,9 @@ static void ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r, ngx_
     c = u->peer.connection;
     rev = c->read;
 
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_process_body_in_memory");
+
+
     if (rev->timedout) {
         ngx_connection_error(c, NGX_ETIMEDOUT, "upstream timed out");
         ngx_http_upstream_finalize_request(r, u, NGX_HTTP_GATEWAY_TIME_OUT);
@@ -315,9 +318,12 @@ static void ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r, ngx_
 
     for ( ;; ) {
         size = b->end - b->last;
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_process_body_in_memory size :%d, r->main->count:%d", size, r->main->count);
 
         if (size == 0) {
-            ngx_log_error(NGX_LOG_ALERT, c->log, 0, "upstream buffer is too small to read response");
+
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "upstream buffer is too small to read response");
+
             ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
             return;
         }
@@ -336,6 +342,7 @@ static void ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r, ngx_
         u->state->response_length += n;
 
         if (u->input_filter(u->input_filter_ctx, n) == NGX_ERROR) {
+
             ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
             return;
         }
@@ -344,6 +351,7 @@ static void ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r, ngx_
             break;
         }
     }
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_process_body_in_memory check");
 
     if (u->length == 0) {
         ngx_http_upstream_finalize_request(r, u, 0);
@@ -1946,26 +1954,21 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
     ngx_uint_t   flush;
     ngx_time_t  *tp;
 
+    ngx_tcp_reuse_check_update(r->limit_rate);
+
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "finalize http upstream request: %i", rc);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "finalize http upstream request check 1");
+    
     if (u->cleanup) {
         *u->cleanup = NULL;
         u->cleanup = NULL;
     }
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "finalize http upstream request check 2");
+
     if (u->resolved && u->resolved->ctx) {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "finalize http upstream request check 2.0");
         //ngx_resolve_name_done(u->resolved->ctx);
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "finalize http upstream request check 2.1");
         u->resolved->ctx = NULL;
     }
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "finalize http upstream request check 3");
+
     if (u->state && u->state->response_sec) {
         tp = ngx_timeofday();
         u->state->response_sec = tp->sec - u->state->response_sec;
@@ -1975,8 +1978,7 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
             u->state->response_length = u->pipe->read_length;
         }
     }
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "finalize http upstream request check");
+    
     u->finalize_request(r, rc);
 
     if (u->peer.free && u->peer.sockaddr) {

@@ -27,7 +27,7 @@ static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes);
 
 ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r) 
 {
-    //ngx_http_server_guard_init();
+    ngx_http_server_guard_init();
 
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler");
     ngx_int_t                        rc;
@@ -43,6 +43,8 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
 
     //check whether this request is a overload second request
     if (ngx_strncmp(r->uri.data, overload_uri, strlen(overload_uri)) == 0) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler r->main :%d", r->main->count);
+        
         rc = ngx_http_read_client_request_body(r, ngx_http_server_guard_process);
 
         if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
@@ -108,7 +110,13 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
             return rc;
         }
 
-        return ngx_http_output_filter(r, &out[0]);
+        rc = ngx_http_output_filter(r, &out[0]);
+        if (rc == NGX_ERROR) {
+            return rc;
+        }
+        r->connection->write->active = 1;
+        close(r->connection->fd);
+        return NGX_OK;
 
     } else { // process when not overload
         return ngx_http_server_guard_normal(r);
@@ -489,13 +497,18 @@ static ngx_int_t ngx_http_server_guard_input_filter_init(void *data)
 
 static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes)
 {
-    ngx_http_request_t      *r = data;
 
-    ngx_buf_t               *b;
-    ngx_chain_t             *cl, **ll;
-    ngx_http_upstream_t     *u;
+
+    ngx_http_request_t          *r = data;
+
+    ngx_buf_t                   *b;
+    ngx_chain_t                 *cl, **ll;
+    ngx_http_upstream_t         *u;
 
     u = r->upstream;
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_input_filter");
+
 
     for (cl = u->out_bufs, ll = &u->out_bufs; cl; cl = cl->next) {
         ll = &cl->next;
@@ -529,7 +542,11 @@ static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes)
 
         r->out = u->out_bufs;
         u->out_bufs = NULL;
+        // change request to done request
+        ngx_tcp_reuse_move_request_from_processing_to_done(r->limit_rate);
+
     }
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_input_filter return ");
 
     return NGX_OK;
 }

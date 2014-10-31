@@ -7,6 +7,7 @@
 #define DELAY 		1
 #define PROCESSING	2
 #define DONE		3
+#define ERROR 		4
 
 typedef struct ngx_tcp_reuse_conn_s 		 ngx_tcp_reuse_conn_t;
 typedef struct ngx_tcp_reuse_request_s		 ngx_tcp_reuse_request_t;
@@ -14,7 +15,7 @@ typedef struct ngx_tcp_reuse_request_s		 ngx_tcp_reuse_request_t;
 
 typedef void(*ngx_tcp_reuse_pool_handler_pt) (ngx_tcp_reuse_conn_t *c);
 
-typedef void(*ngx_delay_reqeust_done_handler_pt) (ngx_http_request_t *r, ngx_http_request_t *second_r);
+typedef void(*ngx_delay_request_handler_pt) (ngx_http_request_t *r, ngx_http_request_t *second_r);
 
 struct ngx_tcp_reuse_conn_s{
 	void               						*data;
@@ -31,9 +32,10 @@ struct ngx_tcp_reuse_conn_s{
 };
 
 struct ngx_tcp_reuse_request_s {
-	void									*data;
+	ngx_http_request_t						*data;
 	ngx_http_request_t 						*second_r;
-	ngx_delay_reqeust_done_handler_pt		*done_handler;
+	ngx_delay_request_handler_pt			 done_handler;
+	ngx_delay_request_handler_pt			 error_handler;
 	size_t									 state;
 	ngx_queue_t 							 q_elt;
 };
@@ -55,6 +57,12 @@ size_t ngx_tcp_reuse_get_request_state(size_t id);
 void *ngx_tcp_reuse_get_request_by_id(size_t id);
 
 int ngx_tcp_reuse_check_processing_request_by_id(size_t id);
+
+void ngx_tcp_reuse_move_request_from_processing_to_done(size_t id);
+
+void ngx_tcp_reuse_check_update(size_t id);
+
+void ngx_tcp_reuse_set_done_and_error_handler(size_t id, ngx_http_request_t *r, ngx_delay_request_handler_pt done_handler, ngx_delay_request_handler_pt error_handler);
 
 
 void *ngx_tcp_reuse_get_delay_request();

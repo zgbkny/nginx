@@ -26,6 +26,10 @@ static void ngx_http_server_guard_process_error(ngx_http_request_t *r, size_t id
 
 static void ngx_http_server_guard_merge_request(ngx_http_request_t *r, ngx_http_request_t *second_r);
 
+static void ngx_http_server_guard_done_handler(ngx_http_request_t *r, ngx_http_request_t *second_r);
+
+static void ngx_http_server_guard_error_handler(ngx_http_request_t *r, ngx_http_request_t *second_r);
+
 
 int check_overload()
 {
@@ -54,7 +58,7 @@ static void ngx_http_server_guard_delay_timeout_handler(ngx_event_t *ev)
   	if (r) {
   
   		r->subrequest_in_memory = 1;  
-  		//ngx_http_server_guard_normal(r);  
+  		ngx_http_server_guard_normal(r);  
   	}
 
     //ngx_add_timer(ev, 1000);
@@ -73,7 +77,7 @@ void ngx_http_server_guard_init()
     delay_ev.data = &dummy;  
 
   	if (!delay_ev.timer_set) {
-    //	ngx_add_timer(&delay_ev, 1000);
+    	ngx_add_timer(&delay_ev, 1000);
     } 
     
     // - - - - - - - - -
@@ -87,9 +91,6 @@ void ngx_http_server_guard_init()
     //	ngx_add_timer(&processing_ev, 5000); 
     }
 }
-
-
-  
   
 
 void ngx_http_server_guard_process(ngx_http_request_t *r)
@@ -108,8 +109,10 @@ void ngx_http_server_guard_process(ngx_http_request_t *r)
 		cl = cl->next;
 	}
 	// also need to check request content
-
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process state:%d", ngx_tcp_reuse_get_request_state(id));
 	switch(ngx_tcp_reuse_get_request_state(id)) {
+
+
 	case DELAY:
 		ngx_http_server_guard_process_delay(r, id);
 		break;
@@ -139,32 +142,73 @@ static void ngx_http_server_guard_process_handler()
 // this is the handler when reqeust is not handle 
 static void ngx_http_server_guard_process_delay(ngx_http_request_t *r, size_t id)
 {
-
+	ngx_http_request_t *origin_r = NULL;
+	origin_r = ngx_tcp_reuse_get_request_by_id(id);
+	origin_r->connection->fd = r->connection->fd;
+	origin_r->header_sent = 0;
+	r->connection->fd = (ngx_socket_t)-1;
+	r->main->count = 1;
+	ngx_http_finalize_request(r, NGX_DONE);
+	ngx_http_server_guard_normal(origin_r);
 }
 
 static void ngx_http_server_guard_process_processing(ngx_http_request_t *r, size_t id)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_processing");
-	ngx_http_request_t *origin_r = NULL;
-	if (ngx_tcp_reuse_check_processing_request_by_id(id) == NGX_OK) {
-			ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_processing done");
 
-		origin_r = ngx_tcp_reuse_get_request_by_id(id);
-		ngx_http_server_guard_merge_request(origin_r, r);
-	}
+	// set callback
+	ngx_tcp_reuse_set_done_and_error_handler(id, r, ngx_http_server_guard_done_handler, ngx_http_server_guard_error_handler);
 }
 
 static void ngx_http_server_guard_process_done(ngx_http_request_t *r, size_t id)
 {
+	ngx_http_request_t *origin_r = NULL;
+	//if (ngx_tcp_reuse_check_processing_request_by_id(id) == NGX_OK) {
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_done");
 
+	origin_r = ngx_tcp_reuse_get_request_by_id(id);
+	ngx_http_server_guard_merge_request(origin_r, r);
+	//}
 }
 
 static void ngx_http_server_guard_process_error(ngx_http_request_t *r, size_t id)
+{
+	ngx_tcp_reuse_get_request_by_id(id);
+	r->main->count = 1;
+	ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+}
+
+static void ngx_http_server_guard_done_handler(ngx_http_request_t *r, ngx_http_request_t *second_r)
+{
+
+}
+
+static void ngx_http_server_guard_error_handler(ngx_http_request_t *r, ngx_http_request_t *second_r)
 {
 
 }
 
 static void ngx_http_server_guard_merge_request(ngx_http_request_t *r, ngx_http_request_t *second_r)
 {
-		ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_merge_request ");
+	ngx_int_t rc;
+	ngx_chain_t *data = r->out;
+	r->out = NULL;
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_merge_request ");
+	r->connection->fd = second_r->connection->fd;
+	second_r->connection->fd = (ngx_socket_t)-1;
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_merge_request ??");
+    r->header_sent = 0;
+	rc = ngx_http_send_header(r);
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+    }
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_merge_request check");
+	
+    rc = ngx_http_output_filter(r, data);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_merge_request 1");
+	
+
+    //r->main->count = 1;
+    ngx_http_finalize_request(r, rc);
+    second_r->main->count = 1;
+    ngx_http_finalize_request(r, NGX_DONE);
 }
