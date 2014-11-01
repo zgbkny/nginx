@@ -13,6 +13,8 @@ int check_overload();
 void ngx_http_server_guard_process(ngx_http_request_t *r);
 void ngx_http_server_guard_init();
 
-void ngx_http_server_guard_close_connection();
+void ngx_http_server_guard_close_connection(ngx_connection_t *c);
+
+void ngx_http_server_guard_release_connection(ngx_connection_t *c);
 
 #endif /*NGX_HTTP_SERVER_GUARD_PROCESS_H*/

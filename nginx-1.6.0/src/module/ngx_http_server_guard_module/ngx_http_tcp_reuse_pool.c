@@ -5,7 +5,7 @@
 #define ngx_tcp_reuse_requests_init_size 100
 #define ngx_tcp_reuse_pool_size 409600
 #define ngx_tcp_reuse_conns_init_size 100
-
+#define ngx_tcp_reuse_request_pool_size 102400
 
 static ngx_pool_t 		*ngx_reuse_pool;
 
@@ -168,12 +168,19 @@ size_t ngx_tcp_reuse_get_request_state(size_t id)
 	}
 }
 
-int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *request, int *id, ngx_log_t *log)
+int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *r, int *id)
 {
-	ngx_tcp_reuse_request_t *new_request = NULL;
-	ngx_queue_t *head = NULL;
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_tcp_reuse_put_delay_request");
 
-	request->main->count++;
+
+	ngx_tcp_reuse_request_t 		*new_request = NULL;
+	ngx_queue_t 					*head = NULL;
+    size_t                           len = 0;
+	ngx_list_part_t                 *part;
+    ngx_table_elt_t                 *header;
+    ngx_buf_t 						*b;
+    ngx_chain_t                     *cl, *body;//, *body;
+    size_t 							 i;
 
 	if (ngx_queue_empty(&empty_requests)) {
 		new_request = ngx_array_push(&requests);
@@ -185,12 +192,114 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *request, int *id, ngx_lo
 		new_request = ngx_queue_data(head, ngx_tcp_reuse_request_t, q_elt);
 		ngx_queue_remove(&new_request->q_elt);
 	}
+
 	ngx_queue_insert_tail(&delay_requests, &new_request->q_elt);
-	new_request->data = request;
+	
+
+	/*------------------------------------*/
+	new_request->data = NULL;
 	new_request->state = DELAY;
 	new_request->second_r = NULL;
 	new_request->done_handler = NULL;
 	new_request->error_handler = NULL;
+	/**************************************/
+
+
+	new_request->log = ngx_cycle->log;
+	new_request->pool = ngx_create_pool(ngx_tcp_reuse_request_pool_size, new_request->log);
+
+	len += r->request_line.len + 2;
+    part = &r->headers_in.headers.part;
+    header = part->elts;
+
+    for (i = 0; ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+            part = part->next;
+            header = part->elts;
+            i = 0;
+        }
+        
+        if (!ngx_strcmp(header[i].key.data, "Connection")) {
+            header[i].value.data = (u_char *)KEEPALIVE;
+            header[i].value.len = 10;
+        }
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "key:%s, value:%s", header[i].key.data, header[i].value.data);
+        
+        len += header[i].key.len + sizeof(": ")
+             + header[i].value.len + sizeof(CRLF);
+    }
+    len += sizeof(CRLF);
+    //len += r->headers_in.content_length_n;
+
+    b = ngx_create_temp_buf(new_request->pool, len);
+    
+    if (b == NULL) {
+        return NGX_ERROR;
+    }
+
+    cl = ngx_alloc_chain_link(new_request->pool);
+    if (cl == NULL) {
+        return NGX_ERROR;
+    }
+
+
+
+    cl->buf = b;
+
+    
+    b->last = ngx_copy(b->last, r->request_line.data, r->request_line.len);
+    *b->last++ = CR; *b->last++ = LF;
+
+    part = &r->headers_in.headers.part;
+    header = part->elts;
+
+    for (i = 0; ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+            part = part->next;
+            header = part->elts;
+            i = 0;
+        }
+        b->last = ngx_copy(b->last, header[i].key.data, header[i].key.len);
+        *b->last++ = ':'; *b->last++ = ' ';
+        b->last = ngx_copy(b->last, header[i].value.data, header[i].value.len);
+        *b->last++ = CR; *b->last++ = LF;
+    }
+
+    *b->last++ = CR; *b->last++ = LF;
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_tcp_reuse_put_delay_request just before body, body length:%d", r->headers_in.content_length_n);
+
+    body = NULL;
+    if (r->request_body) {
+    	body = r->request_body->bufs;    	
+    }
+
+    while (body) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "body:%s", body->buf->start);
+        b = ngx_alloc_buf(new_request->pool);
+        if (b == NULL) {
+            return NGX_ERROR;
+        }
+        ngx_memcpy(b, body->buf, sizeof(ngx_buf_t));
+        cl->next = ngx_alloc_chain_link(new_request->pool);
+        if (cl->next == NULL) {
+            return NGX_ERROR;
+        }
+
+        cl = cl->next;
+        cl->buf = b;
+        body = body->next;
+    }
+    cl->next = NULL;
+    b->flush = 1;
+
+    new_request->cl = cl;
 
 	//set id
 	*id = new_request - (ngx_tcp_reuse_request_t *)requests.elts;
@@ -198,6 +307,45 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *request, int *id, ngx_lo
 	delay_requests_count++;
 	return NGX_OK;
 }
+
+int ngx_tcp_reuse_process_delay_request(ngx_http_request_t *r, size_t id)
+{
+	ngx_tcp_reuse_request_t *trr = requests.elts;
+	
+	if (id >= requests.nelts) {
+		return NGX_ERROR;
+	}
+
+	trr = &trr[id];
+
+	if (trr->state != DELAY) {
+		return NGX_ERROR;
+	} 
+
+	return NGX_OK;
+}
+
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+
 
 void *ngx_tcp_reuse_get_delay_request()
 {

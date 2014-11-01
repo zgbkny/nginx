@@ -1943,7 +1943,7 @@ ngx_http_send_header(ngx_http_request_t *r)
 
     if (r->header_sent) {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
-                      "header already sent");
+                      "#####header already sent######");
         return NGX_ERROR;
     }
     if (r->err_status) {

@@ -43,8 +43,8 @@ int check_overload()
 
 void ngx_http_server_guard_close_connection(ngx_connection_t *c)
 {
-	ngx_err_t 			err;
-	ngx_uint_t			log_error;
+	//ngx_err_t 			err;
+	//ngx_uint_t			log_error;
 	ngx_socket_t   		fd;
 
 	if (c->fd == (ngx_socket_t)-1) {
@@ -70,27 +70,39 @@ void ngx_http_server_guard_close_connection(ngx_connection_t *c)
 		}
 	}
 
-	if (c->read_prev) {
+	if (c->read->prev) {
 		ngx_delete_posted_event(c->read);
 	}
 
-	if (c->write_prev) {
+	if (c->write->prev) {
 		ngx_delete_posted_event(c->write);
 	}
 	c->read->closed = 1;
 	c->write->closed = 1;
 
-	ngx_reusable_connection(c, 0);
+	//ngx_reusable_connection(c, 0);
 
-	log_err = c->log_error;
+	//log_error = c->log_error;
 
-	ngx_free_connection(c);
+	//ngx_free_connection(c);
 
 	fd = c->fd;
 	c->fd = (ngx_socket_t)-1;
 	ngx_close_socket(fd);
 
 }
+
+void ngx_http_server_guard_release_connection(ngx_connection_t *c)
+{
+	if (c->reusable) {
+		ngx_queue_remove(&c->queue);
+	}
+	c->write->active = 0;
+	c->reusable = 0;
+
+	ngx_free_connection(c);
+}
+
 
 
 static void ngx_http_server_guard_processing_timeout_handler(ngx_event_t *ev)
@@ -109,7 +121,7 @@ static void ngx_http_server_guard_delay_timeout_handler(ngx_event_t *ev)
   
   	ngx_http_request_t *r = ngx_tcp_reuse_get_delay_request();
   	if (r) {
-  
+  		r->connection->write->active = 1;
   		r->subrequest_in_memory = 1;  
   		ngx_http_server_guard_normal(r);  
   	}
@@ -130,7 +142,7 @@ void ngx_http_server_guard_init()
     delay_ev.data = &dummy;  
 
   	if (!delay_ev.timer_set) {
-    	ngx_add_timer(&delay_ev, 1000);
+    	//ngx_add_timer(&delay_ev, 10000);
     } 
     
     // - - - - - - - - -
@@ -196,23 +208,55 @@ static void ngx_http_server_guard_process_handler()
 static void ngx_http_server_guard_process_delay(ngx_http_request_t *r, size_t id)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_delay");
-
-	ngx_http_request_t *origin_r = NULL;
-	origin_r = ngx_tcp_reuse_get_request_by_id(id);
-	origin_r->connection->fd = r->connection->fd;
-	origin_r->header_sent = 0;
-	r->connection->fd = (ngx_socket_t)-1;
-	r->main->count = 1;
-	ngx_http_finalize_request(r, NGX_DONE);
-	ngx_http_server_guard_normal(origin_r);
+	
 }
+
+
+
+
+
+
+
+
+
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
+
+//------------------------------------------------------------------
 
 static void ngx_http_server_guard_process_processing(ngx_http_request_t *r, size_t id)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_processing");
-
-	// set callback
-	ngx_tcp_reuse_set_done_and_error_handler(id, r, ngx_http_server_guard_done_handler, ngx_http_server_guard_error_handler);
 }
 
 static void ngx_http_server_guard_process_done(ngx_http_request_t *r, size_t id)

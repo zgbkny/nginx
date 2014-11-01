@@ -4,6 +4,9 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#define KEEPALIVE "keep-alive"
+
+
 #define DELAY 		1
 #define PROCESSING	2
 #define DONE		3
@@ -32,6 +35,11 @@ struct ngx_tcp_reuse_conn_s{
 };
 
 struct ngx_tcp_reuse_request_s {
+
+	ngx_log_t 								*log;
+	ngx_pool_t 								*pool;
+	ngx_chain_t 							*cl;
+
 	ngx_http_request_t						*data;
 	ngx_http_request_t 						*second_r;
 	ngx_delay_request_handler_pt			 done_handler;
@@ -48,7 +56,22 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log);
 
 int ngx_tcp_reuse_put_active_conn(ngx_socket_t fd, ngx_log_t *log);
 
-int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *request, int *id, ngx_log_t *log);
+int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *r, int *id);
+
+int ngx_tcp_reuse_process_delay_request(ngx_http_request_t *r, size_t id);
+
+//---------------------------------------------------------------------
+
+//---------------------------------------------------------------------
+
+//---------------------------------------------------------------------
+
+//---------------------------------------------------------------------
+
+//---------------------------------------------------------------------
+
+//---------------------------------------------------------------------
+
 
 size_t ngx_tcp_reuse_get_queue_time();
 

@@ -8,7 +8,6 @@
 #include "ngx_http_server_guard_handler.h"
 #include "ngx_http_tcp_reuse_upstream.h"
 
-#define KEEPALIVE "keep-alive"
 
 #define overload_uri "/overload_request "
 
@@ -78,7 +77,7 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
         }
 
         // 2:save request and get id
-        if (ngx_tcp_reuse_put_delay_request(r, &id, r->connection->log) == NGX_OK) {
+        if (ngx_tcp_reuse_put_delay_request(r, &id) == NGX_OK) {
             if (id < 0) {
                 return NGX_ERROR;
             } else {
@@ -114,8 +113,6 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
         if (rc == NGX_ERROR) {
             return rc;
         }
-        r->connection->write->active = 1;
-        close(r->connection->fd);
         return NGX_OK;
 
     } else { // process when not overload
@@ -125,7 +122,7 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
 
 ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r)
 {
-    ngx_int_t                        rc;
+    //ngx_int_t                        rc;
     ngx_http_server_guard_ctx_t     *myctx;
     ngx_http_server_guard_conf_t    *mycf;
     ngx_http_upstream_t             *u;
@@ -190,15 +187,18 @@ ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r)
     u->input_filter_ctx = r;
 
     
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler before recv body");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_normal before recv body");
     
 
-    rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
+    /*rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
 
     if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
         return rc;
-    }
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_handler r->main :%d", r->main->count);
+    }*/
+    r->main->count++;
+
+    ngx_http_tcp_reuse_upstream_init(r);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_normal r->main :%d", r->main->count);
     
     //must be NGX_DONE
     return NGX_DONE;
@@ -236,6 +236,9 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
     // cal request len
 
     len += r->request_line.len + 2;
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", r->request_line.data);
+
 
     part = &r->headers_in.headers.part;
     header = part->elts;
