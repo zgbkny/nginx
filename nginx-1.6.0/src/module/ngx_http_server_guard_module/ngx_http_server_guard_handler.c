@@ -15,8 +15,6 @@
 ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r);
 
 static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r);
-static void ngx_http_tcp_reuse_finalize_request(ngx_http_request_t *r, ngx_int_t rc);
-static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r);
 static ngx_int_t tcp_reuse_upstream_process_header(ngx_http_request_t *r);
 
 static ngx_int_t ngx_http_server_guard_input_filter_init(void *data);
@@ -190,14 +188,14 @@ ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r)
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_normal before recv body");
     
 
-    /*rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
+    rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
 
     if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
         return rc;
-    }*/
+    }
     r->main->count++;
 
-    ngx_http_tcp_reuse_upstream_init(r);
+    //ngx_http_tcp_reuse_upstream_init(r);
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_normal r->main :%d", r->main->count);
     
     //must be NGX_DONE
@@ -336,12 +334,12 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 }
 
 
-static void ngx_http_tcp_reuse_finalize_request(ngx_http_request_t *r, ngx_int_t rc)
+void ngx_http_tcp_reuse_finalize_request(ngx_http_request_t *r, ngx_int_t rc)
 {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_finalize_request");
 }
 
-static ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
+ngx_int_t ngx_http_tcp_reuse_process_header(ngx_http_request_t *r)
 {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_process_header");
     size_t               len;

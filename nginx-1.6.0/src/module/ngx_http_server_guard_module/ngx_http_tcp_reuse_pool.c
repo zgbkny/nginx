@@ -249,6 +249,8 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *r, int *id)
 
     cl->buf = b;
 
+    new_request->cl = cl;
+
     
     b->last = ngx_copy(b->last, r->request_line.data, r->request_line.len);
     *b->last++ = CR; *b->last++ = LF;
@@ -281,11 +283,14 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *r, int *id)
     }
 
     while (body) {
+
+
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "body:%s", body->buf->start);
         b = ngx_alloc_buf(new_request->pool);
         if (b == NULL) {
             return NGX_ERROR;
         }
+        // this is a big bug
         ngx_memcpy(b, body->buf, sizeof(ngx_buf_t));
         cl->next = ngx_alloc_chain_link(new_request->pool);
         if (cl->next == NULL) {
@@ -299,7 +304,6 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *r, int *id)
     cl->next = NULL;
     b->flush = 1;
 
-    new_request->cl = cl;
 
 	//set id
 	*id = new_request - (ngx_tcp_reuse_request_t *)requests.elts;
@@ -310,7 +314,11 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *r, int *id)
 
 int ngx_tcp_reuse_process_delay_request(ngx_http_request_t *r, size_t id)
 {
-	ngx_tcp_reuse_request_t *trr = requests.elts;
+	ngx_chain_t              *cl = NULL, *new_cl = NULL;
+	ngx_tcp_reuse_request_t  *trr = requests.elts;
+	int  				      len = 0;
+	ngx_buf_t  				 *b, *new_b;
+
 	
 	if (id >= requests.nelts) {
 		return NGX_ERROR;
@@ -321,6 +329,35 @@ int ngx_tcp_reuse_process_delay_request(ngx_http_request_t *r, size_t id)
 	if (trr->state != DELAY) {
 		return NGX_ERROR;
 	} 
+	new_cl = ngx_alloc_chain_link(r->pool);
+	if (new_cl == NULL) {
+		return NGX_ERROR;
+	}
+	new_cl->next = NULL;
+
+	r->out = new_cl;
+	cl = trr->cl;
+	while (cl) {
+		b = cl->buf;
+		len = b->last - b->start;
+		new_b = ngx_create_temp_buf(r->pool, len);
+		ngx_copy(new_b->last, b->start, len);
+		new_cl->next = ngx_alloc_chain_link(r->pool);
+		new_cl = new_cl->next;
+		new_cl->buf = new_b;
+		cl = cl->next;
+	}
+	new_cl->next = NULL;
+	r->out = r->out->next;
+
+	trr->state = 0;
+	trr->buf = NULL;
+	trr->cl = NULL;
+
+	ngx_destroy_pool(trr->pool);
+	ngx_queue_remove(&trr->q_elt);
+	ngx_queue_insert_tail(&empty_requests, &trr->q_elt);
+
 
 	return NGX_OK;
 }

@@ -1,3 +1,4 @@
+
 #include "ngx_http_server_guard_process.h"
 #include "ngx_http_tcp_reuse_pool.h"
 #include "ngx_http_server_guard_handler.h"
@@ -15,6 +16,10 @@ static ngx_event_t delay_ev;
 static ngx_event_t processing_ev;
 
 //static void ngx_http_server_guard_process_handler();
+
+static ngx_int_t ngx_http_server_guard_send_delay_request(ngx_http_request_t *r);
+
+static ngx_int_t ngx_http_server_guard_create_request(ngx_http_request_t *r);
 
 static void ngx_http_server_guard_process_delay(ngx_http_request_t *r, size_t id);
 
@@ -163,7 +168,6 @@ void ngx_http_server_guard_process(ngx_http_request_t *r)
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process");
 	ngx_chain_t 			*cl = r->request_body->bufs;
 	ngx_buf_t 				*buf;
-	//ngx_str_t				*temp;
 	int						 id = -1;
 
 
@@ -208,10 +212,94 @@ static void ngx_http_server_guard_process_handler()
 static void ngx_http_server_guard_process_delay(ngx_http_request_t *r, size_t id)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_process_delay");
+	ngx_tcp_reuse_process_delay_request(r, id);
 	
+	if (r->out == NULL) {
+		// error here;
+		return;
+	}
+	// request is save in r->out, now it can be send to server
+
+}
+
+static ngx_int_t ngx_http_server_guard_send_delay_request(ngx_http_request_t *r)
+{
+    //ngx_int_t                        rc;
+    ngx_http_server_guard_ctx_t     *myctx;
+    ngx_http_server_guard_conf_t    *mycf;
+    ngx_http_upstream_t             *u;
+    static struct sockaddr_in        backendSockAddr;
+    struct hostent                  *pHost;
+    char                            *pDmsIP;
+    
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request");
+
+    mycf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
+    // get http ctx's ngx_http_server_guard_ctx_t
+    myctx = ngx_http_get_module_ctx(r, ngx_http_server_guard_module);
+
+
+    if (ngx_http_upstream_create(r) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    u = r->upstream;
+    u->conf = &mycf->upstream;
+    u->buffering = mycf->upstream.buffering;
+
+    u->resolved = (ngx_http_upstream_resolved_t *)ngx_palloc(r->pool, sizeof(ngx_http_upstream_resolved_t));
+    if (u->resolved == NULL) {
+        return NGX_ERROR;
+    }
+
+
+    pHost = gethostbyname((char *)mycf->backend_server.data);
+    if (pHost == NULL) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
+        return NGX_ERROR;
+    }
+
+    backendSockAddr.sin_family = AF_INET;
+    backendSockAddr.sin_port = htons((in_port_t)80);
+    pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
+
+    backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
+    myctx->backend_server.data = (u_char *)pDmsIP;
+    myctx->backend_server.len = strlen(pDmsIP);
+
+    u->resolved->sockaddr = (struct sockaddr *)&backendSockAddr;
+    u->resolved->socklen = sizeof(struct sockaddr_in);
+    u->resolved->naddrs = 1;
+
+    u->create_request = ngx_http_server_guard_create_request;
+    u->process_header = ngx_http_tcp_reuse_process_header;
+    u->finalize_request = ngx_http_tcp_reuse_finalize_request;
+
+//    u->input_filter_init = ngx_http_server_guard_input_filter_init;
+//    u->input_filter = ngx_http_server_guard_input_filter;
+    u->input_filter_ctx = r;
+
+    r->main->count++;
+    ngx_http_tcp_reuse_upstream_init(r);
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request r->main :%d", r->main->count);
+    
+    return NGX_DONE;
 }
 
 
+static ngx_int_t ngx_http_server_guard_create_request(ngx_http_request_t *r)
+{
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_create_request");
+
+    ngx_http_upstream_t             *u;    
+    u = r->upstream;
+
+    u->request_bufs = r->out;
+    r->out = NULL;
+
+    return NGX_OK;
+}
 
 
 
