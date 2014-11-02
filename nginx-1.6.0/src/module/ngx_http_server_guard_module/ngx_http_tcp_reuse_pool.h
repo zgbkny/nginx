@@ -77,20 +77,11 @@ size_t ngx_tcp_reuse_get_queue_time();
 
 size_t ngx_tcp_reuse_get_request_state(size_t id);
 
-void *ngx_tcp_reuse_get_request_by_id(size_t id);
-
 int ngx_tcp_reuse_check_processing_request_by_id(size_t id);
-
-void ngx_tcp_reuse_move_request_from_processing_to_done(size_t id);
 
 void ngx_tcp_reuse_check_update(size_t id);
 
 void ngx_tcp_reuse_set_done_and_error_handler(size_t id, ngx_http_request_t *r, ngx_delay_request_handler_pt done_handler, ngx_delay_request_handler_pt error_handler);
-
-
-void *ngx_tcp_reuse_get_delay_request();
-
-void *ngx_tcp_reuse_get_processing_request();
 
 void *ngx_tcp_reuse_delay_request_head();
 

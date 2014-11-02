@@ -1959,7 +1959,6 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
     ngx_uint_t   flush;
     ngx_time_t  *tp;
 
-    ngx_tcp_reuse_check_update(r->limit_rate);
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "finalize http upstream request: %i", rc);

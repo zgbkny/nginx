@@ -1,7 +1,8 @@
-
+#include "ngx_http_server_guard_module.h"
 #include "ngx_http_server_guard_process.h"
 #include "ngx_http_tcp_reuse_pool.h"
 #include "ngx_http_server_guard_handler.h"
+#include "ngx_http_tcp_reuse_upstream.h"
 
 #define dd printf
 
@@ -30,10 +31,6 @@ static void ngx_http_server_guard_process_done(ngx_http_request_t *r, size_t id)
 static void ngx_http_server_guard_process_error(ngx_http_request_t *r, size_t id);
 
 static void ngx_http_server_guard_merge_request(ngx_http_request_t *r, ngx_http_request_t *second_r);
-
-static void ngx_http_server_guard_done_handler(ngx_http_request_t *r, ngx_http_request_t *second_r);
-
-static void ngx_http_server_guard_error_handler(ngx_http_request_t *r, ngx_http_request_t *second_r);
 
 
 int check_overload()
@@ -219,7 +216,7 @@ static void ngx_http_server_guard_process_delay(ngx_http_request_t *r, size_t id
 		return;
 	}
 	// request is save in r->out, now it can be send to server
-
+	ngx_http_server_guard_send_delay_request(r);	
 }
 
 static ngx_int_t ngx_http_server_guard_send_delay_request(ngx_http_request_t *r)
@@ -238,8 +235,20 @@ static ngx_int_t ngx_http_server_guard_send_delay_request(ngx_http_request_t *r)
     // get http ctx's ngx_http_server_guard_ctx_t
     myctx = ngx_http_get_module_ctx(r, ngx_http_server_guard_module);
 
+    if (myctx == NULL) {
+        myctx = ngx_palloc(r->pool, sizeof(ngx_http_server_guard_ctx_t));
+        if (myctx == NULL) {
+            return NGX_ERROR;
+        }
+        ngx_http_set_ctx(r, myctx, ngx_http_server_guard_module);
+
+        // set backend server
+        myctx->backend_server = mycf->backend_server;
+    }
 
     if (ngx_http_upstream_create(r) != NGX_OK) {
+    	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request upstream create error");
+
         return NGX_ERROR;
     }
 
@@ -259,27 +268,46 @@ static ngx_int_t ngx_http_server_guard_send_delay_request(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request check4");
+
+
     backendSockAddr.sin_family = AF_INET;
     backendSockAddr.sin_port = htons((in_port_t)80);
     pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
 
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request check3");
+
+
     backendSockAddr.sin_addr.s_addr = inet_addr(pDmsIP);
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request check2:%s", pDmsIP);
+
     myctx->backend_server.data = (u_char *)pDmsIP;
     myctx->backend_server.len = strlen(pDmsIP);
+
+
 
     u->resolved->sockaddr = (struct sockaddr *)&backendSockAddr;
     u->resolved->socklen = sizeof(struct sockaddr_in);
     u->resolved->naddrs = 1;
 
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request check1");
+
+
     u->create_request = ngx_http_server_guard_create_request;
     u->process_header = ngx_http_tcp_reuse_process_header;
     u->finalize_request = ngx_http_tcp_reuse_finalize_request;
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request check");
+
 
 //    u->input_filter_init = ngx_http_server_guard_input_filter_init;
 //    u->input_filter = ngx_http_server_guard_input_filter;
     u->input_filter_ctx = r;
 
     r->main->count++;
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request before init upstream");
+
     ngx_http_tcp_reuse_upstream_init(r);
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request r->main :%d", r->main->count);
@@ -366,16 +394,6 @@ static void ngx_http_server_guard_process_error(ngx_http_request_t *r, size_t id
 	ngx_tcp_reuse_get_request_by_id(id);
 	r->main->count = 1;
 	ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
-}
-
-static void ngx_http_server_guard_done_handler(ngx_http_request_t *r, ngx_http_request_t *second_r)
-{
-
-}
-
-static void ngx_http_server_guard_error_handler(ngx_http_request_t *r, ngx_http_request_t *second_r)
-{
-
 }
 
 static void ngx_http_server_guard_merge_request(ngx_http_request_t *r, ngx_http_request_t *second_r)

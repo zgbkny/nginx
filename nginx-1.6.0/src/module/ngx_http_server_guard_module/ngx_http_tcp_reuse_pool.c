@@ -341,17 +341,18 @@ int ngx_tcp_reuse_process_delay_request(ngx_http_request_t *r, size_t id)
 		b = cl->buf;
 		len = b->last - b->start;
 		new_b = ngx_create_temp_buf(r->pool, len);
-		ngx_copy(new_b->last, b->start, len);
+		new_b->last = ngx_copy(new_b->last, b->start, len);
 		new_cl->next = ngx_alloc_chain_link(r->pool);
 		new_cl = new_cl->next;
 		new_cl->buf = new_b;
 		cl = cl->next;
+
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, trr->log, 0, "buf:%s", new_b->start);
 	}
 	new_cl->next = NULL;
 	r->out = r->out->next;
 
 	trr->state = 0;
-	trr->buf = NULL;
 	trr->cl = NULL;
 
 	ngx_destroy_pool(trr->pool);

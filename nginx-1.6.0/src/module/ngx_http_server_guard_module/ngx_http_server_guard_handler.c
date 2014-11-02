@@ -120,7 +120,7 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
 
 ngx_int_t ngx_http_server_guard_normal(ngx_http_request_t *r)
 {
-    //ngx_int_t                        rc;
+    ngx_int_t                        rc;
     ngx_http_server_guard_ctx_t     *myctx;
     ngx_http_server_guard_conf_t    *mycf;
     ngx_http_upstream_t             *u;
