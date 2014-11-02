@@ -39,11 +39,6 @@ struct ngx_tcp_reuse_request_s {
 	ngx_log_t 								*log;
 	ngx_pool_t 								*pool;
 	ngx_chain_t 							*cl;
-
-	ngx_http_request_t						*data;
-	ngx_http_request_t 						*second_r;
-	ngx_delay_request_handler_pt			 done_handler;
-	ngx_delay_request_handler_pt			 error_handler;
 	size_t									 state;
 	ngx_queue_t 							 q_elt;
 };
@@ -60,33 +55,9 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *r, int *id);
 
 int ngx_tcp_reuse_process_delay_request(ngx_http_request_t *r, size_t id);
 
-//---------------------------------------------------------------------
-
-//---------------------------------------------------------------------
-
-//---------------------------------------------------------------------
-
-//---------------------------------------------------------------------
-
-//---------------------------------------------------------------------
-
-//---------------------------------------------------------------------
-
-
 size_t ngx_tcp_reuse_get_queue_time();
 
 size_t ngx_tcp_reuse_get_request_state(size_t id);
 
-int ngx_tcp_reuse_check_processing_request_by_id(size_t id);
-
-void ngx_tcp_reuse_check_update(size_t id);
-
-void ngx_tcp_reuse_set_done_and_error_handler(size_t id, ngx_http_request_t *r, ngx_delay_request_handler_pt done_handler, ngx_delay_request_handler_pt error_handler);
-
-void *ngx_tcp_reuse_delay_request_head();
-
-void *ngx_tcp_reuse_processing_request_head();
-
-void *ngx_tcp_reuse_done_request_head();
 
 #endif /*NGX_HTTP_TCP_REUSE_POOL_H*/

@@ -544,7 +544,6 @@ static ngx_int_t ngx_http_server_guard_input_filter(void *data, ssize_t bytes)
         r->out = u->out_bufs;
         u->out_bufs = NULL;
         // change request to done request
-        ngx_tcp_reuse_move_request_from_processing_to_done(r->limit_rate);
 
     }
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_input_filter return ");
