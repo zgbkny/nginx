@@ -50,11 +50,14 @@ struct ngx_tcp_reuse_request_s {
 
 struct ngx_tcp_reuse_resp_stat_s {
 	ngx_msec_t  							 resp_time;
+	ngx_queue_t 							 q_elt;
+
 };
 
 struct ngx_tcp_reuse_conn_stat_s {
+	size_t                                   conn_state:DISCONNECT;
+	ngx_queue_t 							 q_elt;
 
-	size_t                                   conn_state:CONNECT;
 };
 
 void ngx_tcp_reuse_statistic();

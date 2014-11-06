@@ -244,13 +244,6 @@ int ngx_tcp_reuse_put_delay_request(ngx_http_request_t *r, int *id)
 	ngx_queue_insert_tail(&delay_requests, &new_request->q_elt);
 	
 
-	/*------------------------------------*/
-	new_request->data = NULL;
-	new_request->state = DELAY;
-	new_request->second_r = NULL;
-	new_request->done_handler = NULL;
-	new_request->error_handler = NULL;
-	/**************************************/
 
 
 	new_request->log = ngx_cycle->log;
@@ -484,7 +477,7 @@ size_t ngx_tcp_reuse_update_conn_stat(size_t state)
 		new_conn = ngx_queue_data(head, ngx_tcp_reuse_conn_stat_t, q_elt);
 		ngx_queue_remove(&new_conn->q_elt);
 		stat_conns_count--;
-		if (new_conn->conn_stat == DISCONNECT) {
+		if (new_conn->conn_state == DISCONNECT) {
 			if (stat_conns_error_count > 0) {
 				stat_conns_error_count--;
 			} else {
@@ -504,8 +497,8 @@ size_t ngx_tcp_reuse_update_conn_stat(size_t state)
 		}
 
 	}
-	ngx_queue_insert_tail(&active_stat_conns, &new_resp->q_elt);
-	new_conn->conn_state = state
+	ngx_queue_insert_tail(&active_stat_conns, &new_conn->q_elt);
+	new_conn->conn_state = state;
 	if (state == DISCONNECT) {
 		stat_conns_error_count++;
 	}

@@ -114,6 +114,7 @@ ngx_int_t ngx_http_server_guard_handler(ngx_http_request_t *r)
         return NGX_OK;
 
     } else { // process when not overload
+        r->start_msec = ngx_current_msec;
         return ngx_http_server_guard_normal(r);
     }
 }

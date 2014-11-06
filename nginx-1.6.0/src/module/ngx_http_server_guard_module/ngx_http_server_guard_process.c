@@ -32,7 +32,7 @@ static void ngx_http_server_guard_process_error(ngx_http_request_t *r, size_t id
 
 int check_overload()
 {
-	static int i = 5;
+	static int i = -10;
 	i++;
 	if (i > 1) 
 		return SERVER_OVERLOAD;
@@ -113,6 +113,7 @@ static void ngx_http_server_guard_process_delay(ngx_http_request_t *r, size_t id
 		return;
 	}
 	// request is save in r->out, now it can be send to server
+    r->start_msec = ngx_current_msec;
 	ngx_http_server_guard_send_delay_request(r);	
 }
 
