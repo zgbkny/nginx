@@ -7,11 +7,26 @@
 #define ngx_tcp_reuse_conns_init_size 100
 #define ngx_tcp_reuse_request_pool_size 102400
 
+#define ngx_tcp_reuse_stat_conns_init_size 100
+
+#define ngx_tcp_reuse_stat_responses_init_size 100
+
+#define max_stat_conns 200
+#define max_stat_responses 200
+
+#define shreshold_stat_responses 10 //seconds
+#define shreshold_stat_conns 5 // in 100 conns;
+
+
 static ngx_pool_t 		*ngx_reuse_pool;
 
 static ngx_array_t 		 conns;
 
 static ngx_array_t       requests;
+
+static ngx_array_t       stat_responses;
+
+static ngx_array_t       stat_conns;
 
 static ngx_queue_t       empty_conns;
 
@@ -27,9 +42,23 @@ static ngx_queue_t 		 done_requests;
 
 static ngx_queue_t 	     error_requests;
 
-static int active_conns_count;
+static ngx_queue_t 		 active_stat_responses;
+static ngx_queue_t  	 empty_stat_responses;
 
-static int delay_requests_count;
+static ngx_queue_t 		 active_stat_conns;
+static ngx_queue_t 	     empty_stat_conns;
+
+static size_t active_conns_count;
+
+static size_t delay_requests_count;
+
+static size_t stat_conns_count;
+
+static size_t stat_conns_error_count;
+
+static size_t stat_responses_count; 
+
+static size_t stat_responses_error_count;
 
 //static int wait_requests_count;
 
@@ -67,6 +96,18 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 	conns.nalloc = ngx_tcp_reuse_conns_init_size;
 	conns.pool = ngx_reuse_pool;
 
+	stat_conns.elts = ngx_pcalloc(ngx_reuse_pool, ngx_tcp_reuse_stat_conns_init_size * sizeof (ngx_tcp_reuse_conn_stat_t));
+	stat_conns.nelts = 0;
+	stat_conns.size = sizeof (ngx_tcp_reuse_conn_stat_t);
+	stat_conns.nalloc = ngx_tcp_reuse_stat_conns_init_size;
+	stat_conns.pool = ngx_reuse_pool;
+
+	stat_responses.elts = ngx_pcalloc(ngx_reuse_pool, ngx_tcp_reuse_stat_responses_init_size * sizeof (ngx_tcp_reuse_resp_stat_t));
+	stat_responses.nelts = 0;
+	stat_responses.size = sizeof (ngx_tcp_reuse_resp_stat_t);
+	stat_responses.nalloc = ngx_tcp_reuse_stat_responses_init_size;
+	stat_responses.pool = ngx_reuse_pool;
+
 	requests.elts = ngx_palloc(ngx_reuse_pool, ngx_tcp_reuse_requests_init_size * sizeof (ngx_tcp_reuse_request_t));
 	requests.nelts = 0;
 	requests.size = sizeof (ngx_tcp_reuse_request_t);
@@ -80,6 +121,13 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 	ngx_queue_init(&processing_requests);
 	ngx_queue_init(&done_requests);
 	ngx_queue_init(&error_requests);
+	
+	ngx_queue_init(&active_stat_responses);
+	ngx_queue_init(&empty_stat_responses);
+
+	ngx_queue_init(&active_stat_conns);
+	ngx_queue_init(&empty_stat_conns);
+	
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_pool_init ok");
 	return NGX_OK;
 }
@@ -384,3 +432,83 @@ static void ngx_tcp_reuse_write_handler(ngx_tcp_reuse_conn_t *reuse_conn)
 {
 
 }	
+
+
+//////////////////////  statistics /////////////////////////
+size_t ngx_tcp_reuse_update_resp_stat(ngx_msec_t time)
+{
+	ngx_tcp_reuse_resp_stat_t 	*new_resp = NULL;
+	ngx_queue_t 		 		*head = NULL;
+	if (stat_responses_count >= max_stat_responses) {
+		// already full 
+		head = ngx_queue_head(&active_stat_responses);
+		new_resp = ngx_queue_data(head, ngx_tcp_reuse_resp_stat_t, q_elt);
+		ngx_queue_remove(&new_resp->q_elt);
+		stat_responses_count--;
+		if (new_resp->resp_time > shreshold_stat_responses) {
+			if (stat_responses_error_count > 0) {
+				stat_responses_error_count--;
+			} else {
+				stat_responses_error_count = 0;
+			}
+		}
+	} else {
+		if (ngx_queue_empty(&empty_stat_responses)) {
+			new_resp = ngx_array_push(&stat_responses);	
+			if (new_resp == NULL) {
+				return NGX_ERROR;
+			}
+		} else {
+			head = ngx_queue_head(&empty_stat_responses);
+			new_resp = ngx_queue_data(head, ngx_tcp_reuse_resp_stat_t, q_elt);
+			ngx_queue_remove(&new_resp->q_elt);
+		}
+
+	}
+	ngx_queue_insert_tail(&active_stat_responses, &new_resp->q_elt);
+	new_resp->resp_time = time;
+	if (time > shreshold_stat_responses) {
+		stat_responses_error_count++;
+	}
+	stat_responses_count++;
+	return NGX_OK;
+}
+
+size_t ngx_tcp_reuse_update_conn_stat(size_t state)
+{
+	ngx_tcp_reuse_conn_stat_t 	*new_conn = NULL;
+	ngx_queue_t 		 		*head = NULL;
+	if (stat_conns_count >= max_stat_conns) {
+		// already full 
+		head = ngx_queue_head(&active_stat_conns);
+		new_conn = ngx_queue_data(head, ngx_tcp_reuse_conn_stat_t, q_elt);
+		ngx_queue_remove(&new_conn->q_elt);
+		stat_conns_count--;
+		if (new_conn->conn_stat == DISCONNECT) {
+			if (stat_conns_error_count > 0) {
+				stat_conns_error_count--;
+			} else {
+				stat_conns_error_count = 0;
+			}
+		}
+	} else {
+		if (ngx_queue_empty(&empty_stat_conns)) {
+			new_conn = ngx_array_push(&stat_conns);	
+			if (new_conn == NULL) {
+				return NGX_ERROR;
+			}
+		} else {
+			head = ngx_queue_head(&empty_stat_conns);
+			new_conn = ngx_queue_data(head, ngx_tcp_reuse_conn_stat_t, q_elt);
+			ngx_queue_remove(&new_conn->q_elt);
+		}
+
+	}
+	ngx_queue_insert_tail(&active_stat_conns, &new_resp->q_elt);
+	new_conn->conn_state = state
+	if (state == DISCONNECT) {
+		stat_conns_error_count++;
+	}
+	stat_conns_count++;
+	return NGX_OK;
+}
