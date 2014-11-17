@@ -60,6 +60,8 @@ struct ngx_tcp_reuse_conn_stat_s {
 
 };
 
+int check_overload();
+
 void ngx_tcp_reuse_statistic();
 
 int ngx_tcp_reuse_pool_init(ngx_log_t *log);

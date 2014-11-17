@@ -30,15 +30,6 @@ static void ngx_http_server_guard_process_error(ngx_http_request_t *r, size_t id
 
 
 
-int check_overload()
-{
-	static int i = -10;
-	i++;
-	if (i > 1) 
-		return SERVER_OVERLOAD;
-	else 
-		return SERVER_NOTOVERLOAD;
-}
 
 
 

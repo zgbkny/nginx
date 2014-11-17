@@ -3,8 +3,8 @@
 
 
 #define ngx_tcp_reuse_requests_init_size 100
-#define ngx_tcp_reuse_pool_size 409600
-#define ngx_tcp_reuse_conns_init_size 100
+#define ngx_tcp_reuse_pool_size 4096000
+#define ngx_tcp_reuse_conns_init_size 10000
 #define ngx_tcp_reuse_request_pool_size 102400
 
 #define ngx_tcp_reuse_stat_conns_init_size 100
@@ -69,6 +69,25 @@ static void ngx_tcp_reuse_event_handler(ngx_event_t *ev);
 static void ngx_tcp_reuse_read_handler(ngx_tcp_reuse_conn_t *reuse_conn);
 
 static void ngx_tcp_reuse_write_handler(ngx_tcp_reuse_conn_t *reuse_conn);
+
+
+int check_overload()
+{
+    /*return SERVER_NOTOVERLOAD;
+	static int i = -10;
+	i++;
+	if (i > 1) 
+		return SERVER_OVERLOAD;
+	else 
+		return SERVER_NOTOVERLOAD;*/
+	size_t temp1 = shreshold_stat_conns * max_stat_conns / 100;
+	size_t temp2 = shreshold_stat_conns * max_stat_responses / 100;
+	if (stat_conns_error_count >= temp1 || stat_responses_error_count >= temp2) {
+		return SERVER_OVERLOAD;
+	} else {
+		return SERVER_NOTOVERLOAD;
+	}
+}
 
 void ngx_tcp_reuse_statistic()
 {
