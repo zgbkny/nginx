@@ -9,7 +9,7 @@
 #include <ngx_http.h>
 #include <ngx_core.h>
 
-int check_overload();
+
 void ngx_http_server_guard_process(ngx_http_request_t *r);
 void ngx_http_server_guard_init();
 
