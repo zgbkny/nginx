@@ -913,6 +913,7 @@ ngx_free_connection(ngx_connection_t *c)
 void
 ngx_close_connection(ngx_connection_t *c)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "ngx_close_connection:%d", c);
     ngx_err_t     err;
     ngx_uint_t    log_error, level;
     ngx_socket_t  fd;

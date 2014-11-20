@@ -152,6 +152,8 @@ ngx_event_accept(ngx_event_t *ev)
             return;
         }
 
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, ev->log, 0, "ngx_get_connection c:%d in ngx_event_accept", c);
+
 #if (NGX_STAT_STUB)
         (void) ngx_atomic_fetch_add(ngx_stat_active, 1);
 #endif
