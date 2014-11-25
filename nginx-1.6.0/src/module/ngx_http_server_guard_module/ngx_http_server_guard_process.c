@@ -200,7 +200,7 @@ static ngx_int_t ngx_http_server_guard_send_delay_request(ngx_http_request_t *r)
     ngx_http_tcp_reuse_upstream_init(r);
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_server_guard_send_delay_request r->main :%d", r->main->count);
-    
+    r->start_msec = ngx_current_msec;
     return NGX_DONE;
 }
 

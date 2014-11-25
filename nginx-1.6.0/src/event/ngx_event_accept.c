@@ -31,6 +31,7 @@ ngx_event_accept(ngx_event_t *ev)
 #if (NGX_HAVE_ACCEPT4)
     static ngx_uint_t  use_accept4 = 1;
 #endif
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, ev->log, 0, "ngx_event_accept deferred_accept:%d", ev->deferred_accept);
 
     if (ev->timedout) {
         if (ngx_enable_accept_events((ngx_cycle_t *) ngx_cycle) != NGX_OK) {
