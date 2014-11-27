@@ -78,6 +78,8 @@ size_t ngx_tcp_reuse_get_queue_time();
 
 size_t ngx_tcp_reuse_get_request_state(size_t id);
 
+size_t ngx_tcp_reuse_update_ttfb_stat(ngx_msec_t time);
+
 size_t ngx_tcp_reuse_update_resp_stat(ngx_msec_t time);
 
 size_t ngx_tcp_reuse_update_conn_stat(size_t conn_state);

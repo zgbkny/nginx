@@ -77,7 +77,7 @@ static void ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r, ngx_
 void ngx_http_tcp_reuse_rev_handler(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_rev_handler buffer:%d,timeout:%d,%d", u->buffer.last - u->buffer.start, ngx_current_msec - r->start_msec, u->timeout);
-    ngx_tcp_reuse_update_resp_stat(ngx_current_msec - r->start_msec);
+    ngx_tcp_reuse_update_ttfb_stat(ngx_current_msec - r->start_msec);
 
     ssize_t            n;
     ngx_int_t          rc;
@@ -1960,6 +1960,7 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
     ngx_uint_t   flush;
     ngx_time_t  *tp;
 
+    ngx_tcp_reuse_update_resp_stat(ngx_current_msec - r->start_msec);
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "finalize http upstream request: %i", rc);

@@ -48,6 +48,9 @@ static ngx_queue_t  	 empty_stat_responses;
 static ngx_queue_t 		 active_stat_conns;
 static ngx_queue_t 	     empty_stat_conns;
 
+static ngx_queue_t 		 active_stat_whole_responses;
+static ngx_queue_t 		 empty_stat_whole_responses;
+
 static size_t active_conns_count;
 
 static size_t delay_requests_count;
@@ -59,6 +62,10 @@ static size_t stat_conns_error_count;
 static size_t stat_responses_count; 
 
 static size_t stat_responses_error_count;
+
+static size_t stat_whole_responses_count;
+
+static size_t average_whole_resp_time;
 
 //static int wait_requests_count;
 
@@ -97,7 +104,8 @@ void ngx_tcp_reuse_statistic()
 // ret val:second
 size_t ngx_tcp_reuse_get_queue_time()
 {
-	return 7;
+	size_t wait_time = stat_responses_count * average_whole_resp_time / 1000;
+	return wait_time;
 }
 
 int ngx_tcp_reuse_pool_init(ngx_log_t *log)
@@ -146,6 +154,9 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 
 	ngx_queue_init(&active_stat_conns);
 	ngx_queue_init(&empty_stat_conns);
+
+	ngx_queue_init(&active_stat_whole_responses);
+	ngx_queue_init(&empty_stat_whole_responses);
 	
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_pool_init ok");
 	return NGX_OK;
@@ -446,8 +457,8 @@ static void ngx_tcp_reuse_write_handler(ngx_tcp_reuse_conn_t *reuse_conn)
 }	
 
 
-//////////////////////  statistics /////////////////////////
-size_t ngx_tcp_reuse_update_resp_stat(ngx_msec_t time)
+////////////////////// time to first buffer statistics /////////////////////////
+size_t ngx_tcp_reuse_update_ttfb_stat(ngx_msec_t time)
 {
 	ngx_tcp_reuse_resp_stat_t 	*new_resp = NULL;
 	ngx_queue_t 		 		*head = NULL;
@@ -522,5 +533,41 @@ size_t ngx_tcp_reuse_update_conn_stat(size_t state)
 		stat_conns_error_count++;
 	}
 	stat_conns_count++;
+	return NGX_OK;
+}
+
+size_t ngx_tcp_reuse_update_resp_stat(ngx_msec_t time) 
+{
+	ngx_tcp_reuse_resp_stat_t 	*new_resp = NULL;
+	ngx_queue_t 		 		*head = NULL;
+	if (stat_whole_responses_count >= max_stat_responses) {
+		// already full 
+		head = ngx_queue_head(&active_stat_whole_responses);
+		new_resp = ngx_queue_data(head, ngx_tcp_reuse_resp_stat_t, q_elt);
+		ngx_queue_remove(&new_resp->q_elt);
+		stat_whole_responses_count--;
+
+		// update average whole response time
+		average_whole_resp_time = average_whole_resp_time + (time - new_resp->resp_time) * 1.0 /  max_stat_responses;
+
+	} else {
+		if (ngx_queue_empty(&empty_stat_whole_responses)) {
+			new_resp = ngx_array_push(&stat_responses);	
+			if (new_resp == NULL) {
+				return NGX_ERROR;
+			}
+		} else {
+			head = ngx_queue_head(&empty_stat_whole_responses);
+			new_resp = ngx_queue_data(head, ngx_tcp_reuse_resp_stat_t, q_elt);
+			ngx_queue_remove(&new_resp->q_elt);
+		}
+
+		// update average whole response time
+		average_whole_resp_time = average_whole_resp_time + (time - average_whole_resp_time) * 1.0 /  max_stat_responses;
+
+	}
+	ngx_queue_insert_tail(&active_stat_responses, &new_resp->q_elt);
+	new_resp->resp_time = time;
+	stat_responses_count++;
 	return NGX_OK;
 }
