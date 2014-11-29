@@ -744,6 +744,8 @@ ngx_event_process_init(ngx_cycle_t *cycle)
     i = cycle->connection_n;
     next = NULL;
 
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "create connections, num:%d", i);
+
     do {
         i--;
 

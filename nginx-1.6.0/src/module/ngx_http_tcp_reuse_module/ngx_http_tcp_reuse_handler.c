@@ -19,12 +19,19 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_handler fd:%d", r->connection->fd);
     
+    ngx_int_t                        rc;
+    ngx_http_tcp_reuse_ctx_t        *myctx;
+    ngx_http_tcp_reuse_conf_t       *mycf;
+/*    ngx_buf_t                       *b;
+    ngx_chain_t                      out[2];
+    char                             data[100];
+*/
     // open keepalive
-    r->keepalive = 1;
+    r->keepalive = 0;
 
 
     // get http ctx's ngx_http_tcp_reuse_ctx_t
-    ngx_http_tcp_reuse_ctx_t *myctx = ngx_http_get_module_ctx(r, ngx_http_tcp_reuse_module);
+    myctx = ngx_http_get_module_ctx(r, ngx_http_tcp_reuse_module);
     if (myctx == NULL) {
         myctx = ngx_palloc(r->pool, sizeof(ngx_http_tcp_reuse_ctx_t));
         if (myctx == NULL) {
@@ -39,7 +46,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    ngx_http_tcp_reuse_conf_t *mycf = (ngx_http_tcp_reuse_conf_t *)ngx_http_get_module_loc_conf(r, ngx_http_tcp_reuse_module);
+    mycf = (ngx_http_tcp_reuse_conf_t *)ngx_http_get_module_loc_conf(r, ngx_http_tcp_reuse_module);
     ngx_http_upstream_t *u = r->upstream;
     u->conf = &mycf->upstream;
     u->buffering = mycf->upstream.buffering;
@@ -51,7 +58,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
     }
 
     static struct sockaddr_in backendSockAddr;
-    struct hostent *pHost = gethostbyname((char *)"192.168.5.200");
+    struct hostent *pHost = gethostbyname((char *)mycf->backend_server.data);
     if (pHost == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
         return NGX_ERROR;
@@ -74,9 +81,16 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
     u->process_header = ngx_http_tcp_reuse_process_header;
     u->finalize_request = ngx_http_tcp_reuse_finalize_request;
 
-    r->main->count++;
-    ngx_http_tcp_reuse_upstream_init(r);
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_handler %s", strerror(errno));
+    rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
+
+    if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+        return rc;
+    }
+    //r->main->count++;
+
+    //ngx_http_tcp_reuse_upstream_init(r);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_normal r->main :%d", r->main->count);
+    
     //must be NGX_DONE
     return NGX_DONE;
 	
@@ -87,15 +101,36 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_create_request");
 
-    size_t               len = 0;
-    ngx_uint_t           i = 0;
-    ngx_list_part_t     *part;
-    ngx_table_elt_t     *header;
-    ngx_buf_t           *b;
-    ngx_chain_t         *cl;//, *body;
+    ngx_str_t                        method;
+    size_t                           len = 0;
+    ngx_uint_t                       i = 0;
+    ngx_list_part_t                 *part;
+    ngx_table_elt_t                 *header;
+    ngx_buf_t                       *b;
+    ngx_chain_t                     *cl, *body;//, *body;
+    ngx_http_upstream_t             *u;
+    //ngx_http_server_guard_conf_t    *sgcf;
+    //ngx_http_server_guard_ctx_t     *ctx;  
+    
+    u = r->upstream;
 
+    //sgcf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
+
+    if (u->method.len) {
+        method = u->method;
+        method.len++;
+    } else {
+        method = r->method_name;
+        method.len++;
+    }
+    
+
+    // cal request len
 
     len += r->request_line.len + 2;
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", r->request_line.data);
+
 
     part = &r->headers_in.headers.part;
     header = part->elts;
@@ -120,6 +155,7 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
              + header[i].value.len + sizeof(CRLF);
     }
     len += sizeof(CRLF);
+    //len += r->headers_in.content_length_n;
 
     b = ngx_create_temp_buf(r->pool, len);
     
@@ -159,11 +195,32 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", b->start);
 
-    r->upstream->request_bufs = cl;
-    r->upstream->request_bufs->next = NULL;
+    
+    body = u->request_bufs;
+    u->request_bufs = cl;
+    while (body) {
 
-    r->upstream->request_sent = 0;
-    r->upstream->header_sent = 0;
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "body:%s", body->buf->start);
+        b = ngx_alloc_buf(r->pool);
+        if (b == NULL) {
+            return NGX_ERROR;
+        }
+        ngx_memcpy(b, body->buf, sizeof(ngx_buf_t));
+        cl->next = ngx_alloc_chain_link(r->pool);
+        if (cl->next == NULL) {
+            return NGX_ERROR;
+        }
+
+        cl = cl->next;
+        cl->buf = b;
+        body = body->next;
+    }
+
+    cl->next = NULL;
+    b->flush = 1;
+
+    u->request_sent = 0;
+    u->header_sent = 0;
 
     r->header_hash = 1;
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_create_request over");

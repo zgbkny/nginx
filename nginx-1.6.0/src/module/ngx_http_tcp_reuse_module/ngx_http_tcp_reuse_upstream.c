@@ -1961,8 +1961,12 @@ static void ngx_http_upstream_finalize_request(ngx_http_request_t *r, ngx_http_u
                     ngx_del_event(u->peer.connection->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
                 }
             }
+            u->peer.connection->fd = 1;
+            ngx_reusable_connection(u->peer.connection, 0);
+            ngx_free_connection(u->peer.connection);
         } else {
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "not reuse");
+            // have to close it 
             ngx_close_connection(u->peer.connection);
         }
     }
