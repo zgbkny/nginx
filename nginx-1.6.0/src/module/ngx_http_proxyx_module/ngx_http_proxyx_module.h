@@ -1,5 +1,5 @@
-#ifndef NGX_HTTP_LOCAL_PROXY_MODULE_H
-#define NGX_HTTP_LOCAL_PROXY_MODULE_H
+#ifndef NGX_HTTP_PROXYX_MODULE_H
+#define NGX_HTTP_PROXYX_MODULE_H
 
 
 
@@ -11,14 +11,14 @@
 typedef struct {
     ngx_http_status_t 			status;
     ngx_str_t 					backendServer;
-} ngx_http_local_proxy_ctx_t;
+} ngx_http_proxyx_ctx_t;
 
 typedef struct {
     ngx_http_upstream_conf_t 	upstream;
     ngx_str_t 				 	backend_server;
-} ngx_http_local_proxy_conf_t;
+} ngx_http_proxyx_conf_t;
 
 extern ngx_str_t ngx_http_proxy_hide_headers[];
-extern ngx_module_t ngx_http_local_proxy_module;
+extern ngx_module_t ngx_http_proxyx_module;
 
-#endif /*NGX_HTTP_LOCAL_PROXY_MODULE_H*/
+#endif /*NGX_HTTP_proxyx_MODULE_H*/

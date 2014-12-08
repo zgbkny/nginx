@@ -1,13 +1,14 @@
-#include "ngx_http_local_proxy_module.h"
-#include "ngx_http_local_proxy_handler.h"
+#include "ngx_http_proxyx_module.h"
+#include "ngx_http_proxyx_handler.h"
+#include "ngx_http_tcp_reuse_pool.h"
 
-char* ngx_http_local_proxy(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+char* ngx_http_proxyx(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 // Allocate memory for HelloWorld command
-void* ngx_http_local_proxy_create_loc_conf(ngx_conf_t* cf);
+void* ngx_http_proxyx_create_loc_conf(ngx_conf_t* cf);
 
 // Copy HelloWorld argument to another place
-char* ngx_http_local_proxy_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child);
+char* ngx_http_proxyx_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child);
 
 ngx_str_t ngx_http_proxy_hide_headers[] = {
     ngx_string("Date"),
@@ -21,11 +22,11 @@ ngx_str_t ngx_http_proxy_hide_headers[] = {
     ngx_null_string
 };
 
-static ngx_command_t ngx_http_local_proxy_cmds[] = {
+static ngx_command_t ngx_http_proxyx_cmds[] = {
     {
-        ngx_string("local_proxy"), // The command name
+        ngx_string("proxyx"), // The command name
         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1234,
-        ngx_http_local_proxy, // The command handler
+        ngx_http_proxyx, // The command handler
         NGX_HTTP_LOC_CONF_OFFSET,
         0,
         NULL
@@ -33,7 +34,7 @@ static ngx_command_t ngx_http_local_proxy_cmds[] = {
     ngx_null_command
 };
 
-static ngx_http_module_t ngx_http_local_proxy_module_ctx = {
+static ngx_http_module_t ngx_http_proxyx_module_ctx = {
     NULL,
     NULL,
 
@@ -44,14 +45,14 @@ static ngx_http_module_t ngx_http_local_proxy_module_ctx = {
 
     NULL,
 
-    ngx_http_local_proxy_create_loc_conf,
-    ngx_http_local_proxy_merge_loc_conf
+    ngx_http_proxyx_create_loc_conf,
+    ngx_http_proxyx_merge_loc_conf
 };
 
-ngx_module_t ngx_http_local_proxy_module = {
+ngx_module_t ngx_http_proxyx_module = {
     NGX_MODULE_V1,
-    &ngx_http_local_proxy_module_ctx,
-    ngx_http_local_proxy_cmds,
+    &ngx_http_proxyx_module_ctx,
+    ngx_http_proxyx_cmds,
     NGX_HTTP_MODULE,
     NULL,
     NULL,
@@ -63,10 +64,10 @@ ngx_module_t ngx_http_local_proxy_module = {
     NGX_MODULE_V1_PADDING
 };
 
-char* ngx_http_local_proxy(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
+char* ngx_http_proxyx(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
 {
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_local_proxy");
-    ngx_http_local_proxy_conf_t *mycf = conf;
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_proxyx");
+    ngx_http_proxyx_conf_t *mycf = conf;
 
     /* cf->args is a ngx_array_t queue, every element in it is ngx_str_t.*/
     ngx_str_t *value = cf->args->elts; 
@@ -75,20 +76,22 @@ char* ngx_http_local_proxy(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
         mycf->backend_server = value[1];
     }
 
+
+    ngx_tcp_reuse_pool_init(cf->log);
     ngx_http_core_loc_conf_t* clcf;
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-    clcf->handler = ngx_http_local_proxy_handler;
+    clcf->handler = ngx_http_proxyx_handler;
     ngx_conf_set_str_slot(cf, cmd, conf);
     return NGX_CONF_OK;
 }
 
-void* ngx_http_local_proxy_create_loc_conf(ngx_conf_t* cf) {
+void* ngx_http_proxyx_create_loc_conf(ngx_conf_t* cf) {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_uptest_create_loc_conf");
-    ngx_http_local_proxy_conf_t* conf;
+    ngx_http_proxyx_conf_t* conf;
 
     
 
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_local_proxy_conf_t));
+    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_proxyx_conf_t));
     if (conf == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -111,11 +114,11 @@ void* ngx_http_local_proxy_create_loc_conf(ngx_conf_t* cf) {
     return conf;
 }
 
-char* ngx_http_local_proxy_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child)
+char* ngx_http_proxyx_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child)
 {
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "ngx_http_uptest_merge_loc_conf");
-    ngx_http_local_proxy_conf_t* prev = parent;
-    ngx_http_local_proxy_conf_t* conf = child;
+    ngx_http_proxyx_conf_t* prev = parent;
+    ngx_http_proxyx_conf_t* conf = child;
     
     ngx_hash_init_t hash;
     hash.max_size = 100;
