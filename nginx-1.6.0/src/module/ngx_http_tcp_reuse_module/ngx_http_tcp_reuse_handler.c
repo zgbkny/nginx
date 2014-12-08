@@ -116,18 +116,18 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
 
     //sgcf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
 
-    if (u->method.len) {
-        method = u->method;
-        method.len++;
-    } else {
+   // if (u->method.len) {
+   //     method = u->method;
+   //     method.len++;
+   // } else {
         method = r->method_name;
         method.len++;
-    }
+   // }
     
 
     // cal request len
 
-    len += r->request_line.len + 2;
+    len += r->uri.len + 1 + r->http_protocol.len + 2;
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", r->request_line.data);
 
@@ -169,8 +169,15 @@ static ngx_int_t ngx_http_tcp_reuse_create_request(ngx_http_request_t *r)
     }
 
     cl->buf = b;
+    b->last = ngx_copy(b->last, r->method_name.data, r->method_name.len);
+    *b->last++ = ' ';
 
-    b->last = ngx_copy(b->last, r->request_line.data, r->request_line.len);
+
+    b->last = ngx_copy(b->last, r->uri.data, r->uri.len);
+    *b->last++ = ' ';
+
+    b->last = ngx_copy(b->last, r->http_protocol.data, r->http_protocol.len);
+
     *b->last++ = CR; *b->last++ = LF;
 
     part = &r->headers_in.headers.part;

@@ -97,7 +97,7 @@ void* ngx_http_local_proxy_create_loc_conf(ngx_conf_t* cf) {
     conf->upstream.send_timeout = 60000;
     conf->upstream.read_timeout = 60000;
     conf->upstream.store_access = 0600;
-    conf->upstream.buffering = 0;
+    conf->upstream.buffering = 1024 * 8;
     conf->upstream.bufs.num = 8;
     conf->upstream.bufs.size = ngx_pagesize;
     conf->upstream.buffer_size = ngx_pagesize;

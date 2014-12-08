@@ -4,6 +4,9 @@
 
 #include "ngx_http_local_proxy_module.h"
 #include "ngx_http_local_proxy_handler.h"
+#include "ngx_http_tcp_reuse_upstream.h"
+
+#define HOST_LEN 100
 
 static ngx_int_t ngx_http_local_proxy_create_request(ngx_http_request_t *r);
 
@@ -16,17 +19,21 @@ ngx_int_t ngx_http_local_proxy_handler(ngx_http_request_t *r)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_local_proxy_handler fd:%d", r->connection->fd);
     
+    char                               host[HOST_LEN];
     ngx_int_t                          rc;
     ngx_uint_t                         i = 0;
     ngx_http_local_proxy_ctx_t        *myctx;
     ngx_http_local_proxy_conf_t       *mycf;
     ngx_list_part_t                   *part;
     ngx_table_elt_t                   *header;
-    ngx_str_t                          host_port;
+    //ngx_str_t                          host_port;
+    ngx_url_t                          url;
 /*    ngx_buf_t                       *b;
     ngx_chain_t                      out[2];
     char                             data[100];
 */
+
+    r->keepalive = 1;
     // get http ctx's ngx_http_local_proxy_ctx_t
     myctx = ngx_http_get_module_ctx(r, ngx_http_local_proxy_module);
     if (myctx == NULL) {
@@ -58,6 +65,13 @@ ngx_int_t ngx_http_local_proxy_handler(ngx_http_request_t *r)
     part = &r->headers_in.headers.part;
     header = part->elts;
 
+    //host_port.data = NULL;
+    //host_port.len = 0;
+
+    url.url.data = NULL;
+    url.url.len = 0;
+    ngx_memzero(host, HOST_LEN);
+
     for (i = 0; ; i++) {
         if (i >= part->nelts) {
             if (part->next == NULL) {
@@ -71,22 +85,41 @@ ngx_int_t ngx_http_local_proxy_handler(ngx_http_request_t *r)
         
         if (!ngx_strcmp(header[i].key.data, "Host")) {
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "key:%s, value:%s", header[i].key.data, header[i].value.data);
-            host_port.data = header[i].value.data;
-            host_port.len = header[i].value.len;
+        //    host_port.data = header[i].value.data;
+        //    host_port.len = header[i].value.len;
+
+            url.url.data = header[i].value.data;
+            url.url.len = header[i].value.len;
         }
 
     }
+
+    if (ngx_parse_url(r->pool, &url) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_local_proxy_handler after parse url");
     //get remote url and port
+    ngx_memcpy(host, url.host.data, url.host.len);
+    host[url.host.len] = 0;
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_local_proxy_handler host_port:%s, %d", host, url.port_text.len);
+
+    
 
     static struct sockaddr_in backendSockAddr;
-    struct hostent *pHost = gethostbyname((char *)mycf->backend_server.data);
+    //struct hostent *pHost = gethostbyname((char *)url.sockaddr);
+    struct hostent *pHost = gethostbyname((char *)url.host.data);
+
     if (pHost == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gethostbyname fail. %s", strerror(errno));
         return NGX_ERROR;
     }
-
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_local_proxy_handler check");
     backendSockAddr.sin_family = AF_INET;
-    backendSockAddr.sin_port = htons((in_port_t)80);
+    if (url.url.len == url.host.len)
+        backendSockAddr.sin_port = htons((in_port_t)80);
+    else
+        backendSockAddr.sin_port = htons((in_port_t)url.port);
     char *pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_local_proxy_handler. %s", pDmsIP);
@@ -102,12 +135,14 @@ ngx_int_t ngx_http_local_proxy_handler(ngx_http_request_t *r)
     u->process_header = ngx_http_local_proxy_process_header;
     u->finalize_request = ngx_http_local_proxy_finalize_request;
 
-    rc = ngx_http_read_client_request_body(r, ngx_http_upstream_init);
+
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_local_proxy_handler check");
+    rc = ngx_http_read_client_request_body(r, ngx_http_tcp_reuse_upstream_init);
 
     if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
         return rc;
     }
-    //r->main->count++;
+    r->main->count++;
 
     //ngx_http_local_proxy_upstream_init(r);
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_local_proxy_normal r->main :%d", r->main->count);
@@ -137,20 +172,20 @@ static ngx_int_t ngx_http_local_proxy_create_request(ngx_http_request_t *r)
 
     //sgcf = ngx_http_get_module_loc_conf(r, ngx_http_server_guard_module);
 
-    if (u->method.len) {
-        method = u->method;
-        method.len++;
-    } else {
+   // if (u->method.len) {
+   //     method = u->method;
+   //     method.len++;
+   // } else {
         method = r->method_name;
         method.len++;
-    }
+   // }
     
 
     // cal request len
 
-    len += r->request_line.len + 2;
+    len += r->uri.len + 1 + r->http_protocol.len + 2;
 
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", r->request_line.data);
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "request:%s", r->uri.data);
 
 
     part = &r->headers_in.headers.part;
@@ -185,8 +220,15 @@ static ngx_int_t ngx_http_local_proxy_create_request(ngx_http_request_t *r)
     }
 
     cl->buf = b;
+    b->last = ngx_copy(b->last, r->method_name.data, r->method_name.len);
+    *b->last++ = ' ';
 
-    b->last = ngx_copy(b->last, r->request_line.data, r->request_line.len);
+
+    b->last = ngx_copy(b->last, r->uri.data, r->uri.len);
+    *b->last++ = ' ';
+
+    b->last = ngx_copy(b->last, r->http_protocol.data, r->http_protocol.len);
+
     *b->last++ = CR; *b->last++ = LF;
 
     part = &r->headers_in.headers.part;
