@@ -65,7 +65,7 @@ ngx_int_t ngx_http_tcp_reuse_handler(ngx_http_request_t *r)
     }
 
     backendSockAddr.sin_family = AF_INET;
-    backendSockAddr.sin_port = htons((in_port_t)80);
+    backendSockAddr.sin_port = htons((in_port_t)8000);
     char *pDmsIP = inet_ntoa(*(struct in_addr*)(pHost->h_addr_list[0]));
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_tcp_reuse_handler. %s", pDmsIP);

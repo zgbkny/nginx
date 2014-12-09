@@ -205,17 +205,14 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
 
     ngx_uint_t  flags;
     ngx_msec_t  timer, delta;
-    ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "ngx_timer_resolution: %d", ngx_timer_resolution);
     if (ngx_timer_resolution) {
         timer = NGX_TIMER_INFINITE;
         flags = 0;
 
     } else {
-        ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "ngx_event_find_timer");
         timer = ngx_event_find_timer();
         flags = NGX_UPDATE_TIME;
 
-        ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "timer: %d", timer);
 
 
 #if (NGX_THREADS)
@@ -249,7 +246,6 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
         }
     }
 
-    ngx_log_debug(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "timer: %M", timer);
 
     delta = ngx_current_msec;
 
@@ -257,8 +253,6 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
 
     delta = ngx_current_msec - delta;
 
-    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
-                   "timer delta: %M", delta);
 
     if (ngx_posted_accept_events) {
         ngx_event_process_posted(cycle, &ngx_posted_accept_events);
