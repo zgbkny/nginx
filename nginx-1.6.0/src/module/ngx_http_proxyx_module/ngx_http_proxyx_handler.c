@@ -399,7 +399,7 @@ static ngx_int_t proxyx_upstream_process_header(ngx_http_request_t *r)
         }
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "uu->headers_in.status_n:%d", r->upstream->headers_in.status_n);
         if (rc == NGX_HTTP_PARSE_HEADER_DONE) {
-            /*
+            
             if (r->upstream->headers_in.server == NULL) {
                 h = ngx_list_push(&r->upstream->headers_in.headers);
                 if (h == NULL) {
@@ -424,7 +424,7 @@ static ngx_int_t proxyx_upstream_process_header(ngx_http_request_t *r)
                 ngx_str_set(&h->key, "Date");
                 ngx_str_null(&h->value);
                 h->lowcase_key = (u_char *) "date";
-            }*/
+            }
 
             // add reuseable
             ngx_http_upstream_t *u = r->upstream;

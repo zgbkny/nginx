@@ -476,7 +476,7 @@ static void ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upst
 
         u->read_event_handler = ngx_http_upstream_process_non_buffered_upstream;
         r->write_event_handler =
-                             ngx_http_upstream_process_non_buffered_downstream;
+            ngx_http_upstream_process_non_buffered_downstream;
 
         r->limit_rate = 0;
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response 2");
@@ -706,6 +706,7 @@ static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r
     ngx_http_upstream_t       *u;
     ngx_http_core_loc_conf_t  *clcf;
     size_t                     flag = do_write;
+    ngx_chain_t               *cl;
 
     u = r->upstream;
     downstream = r->connection;
@@ -723,10 +724,15 @@ static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r
                 if (flag) {
                     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "send to downstream. u->length: %d", u->length);
                 }
-                rc = ngx_http_output_filter(r, u->out_bufs);
-                if (flag) {
-                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "send to downstream. u->length: %d", u->length);
+
+                for (cl = u->out_bufs; cl; cl = cl->next) {
+                    ngx_log_debug(NGX_LOG_DEBUG_EVENT, r->connection->log, 0, "out_buf size:%d", cl->buf->last - cl->buf->pos);
+
                 }
+
+                rc = ngx_http_output_filter(r, u->out_bufs);
+                //rc = ngx_http_write_filter(r, u->out_bufs);
+                
                 if (rc == NGX_ERROR) {
                     ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
                     return;
@@ -805,7 +811,6 @@ static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r
 
     if (downstream->write->active && !downstream->write->ready) {
         ngx_add_timer(downstream->write, clcf->send_timeout);
-
     } else if (downstream->write->timer_set) {
         ngx_del_timer(downstream->write);
     }
@@ -817,7 +822,6 @@ static void ngx_http_upstream_process_non_buffered_request(ngx_http_request_t *r
 
     if (upstream->read->active && !upstream->read->ready) {
         ngx_add_timer(upstream->read, u->conf->read_timeout);
-
     } else if (upstream->read->timer_set) {
         ngx_del_timer(upstream->read);
     }

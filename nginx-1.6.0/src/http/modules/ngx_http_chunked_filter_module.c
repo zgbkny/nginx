@@ -107,6 +107,9 @@ ngx_http_chunked_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_chain_t                    *out, *cl, *tl, **ll;
     ngx_http_chunked_filter_ctx_t  *ctx;
 
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, r->connection->log, 0, "ngx_http_chunked_body_filter");
+
+
     if (in == NULL || !r->chunked || r->header_only) {
         return ngx_http_next_body_filter(r, in);
     }
@@ -120,7 +123,7 @@ ngx_http_chunked_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     cl = in;
 
     for ( ;; ) {
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "http chunk: %d", ngx_buf_size(cl->buf));
 
         size += ngx_buf_size(cl->buf);
@@ -176,7 +179,13 @@ ngx_http_chunked_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
         tl->next = out;
         out = tl;
+
+
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, r->connection->log, 0, "b size:%d", b->last - b->pos);
     }
+
+    
+
 
     if (cl->buf->last_buf) {
         tl = ngx_chain_get_free_buf(r->pool, &ctx->free);
@@ -219,6 +228,11 @@ ngx_http_chunked_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     } else {
         *ll = NULL;
+    }
+
+    for (cl = out; cl; cl = cl->next) {
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, r->connection->log, 0, "out_buf size:%d", cl->buf->last - cl->buf->pos);
+
     }
 
     rc = ngx_http_next_body_filter(r, out);

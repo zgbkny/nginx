@@ -1961,13 +1961,19 @@ ngx_http_output_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
     ngx_int_t          rc;
     ngx_connection_t  *c;
+    
 
     c = r->connection;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
                    "http output filter \"%V?%V\"", &r->uri, &r->args);
 
+    
+
     rc = ngx_http_top_body_filter(r, in);
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                   "http output filter return \"%V?%V\"", &r->uri, &r->args);
 
     if (rc == NGX_ERROR) {
         /* NGX_ERROR may be returned by any filter */

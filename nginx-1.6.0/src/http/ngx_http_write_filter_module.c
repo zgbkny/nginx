@@ -55,6 +55,11 @@ ngx_http_write_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_connection_t          *c;
     ngx_http_core_loc_conf_t  *clcf;
 
+    for (cl = in; cl; cl = cl->next) {
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, r->connection->log, 0, "out_buf size:%d", cl->buf->last - cl->buf->pos);
+
+    }
+
     c = r->connection;
 
     if (c->error) {
@@ -67,6 +72,8 @@ ngx_http_write_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ll = &r->out;
 
     /* find the size, the flush point and the last link of the saved chain */
+
+
 
     for (cl = r->out; cl; cl = cl->next) {
         ll = &cl->next;
@@ -113,6 +120,12 @@ ngx_http_write_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     /* add the new chain to the existent one */
 
+    for (cl = in; cl; cl = cl->next) {
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, r->connection->log, 0, "out_buf size:%d", cl->buf->last - cl->buf->pos);
+
+    }
+
+
     for (ln = in; ln; ln = ln->next) {
         cl = ngx_alloc_chain_link(r->pool);
         if (cl == NULL) {
@@ -123,6 +136,7 @@ ngx_http_write_filter(ngx_http_request_t *r, ngx_chain_t *in)
         *ll = cl;
         ll = &cl->next;
 
+        
         ngx_log_debug7(NGX_LOG_DEBUG_EVENT, c->log, 0,
                        "write new buf t:%d f:%d %p, pos %p, size: %z "
                        "file: %O, size: %z",
