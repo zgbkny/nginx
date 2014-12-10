@@ -10,6 +10,7 @@
 #include <ngx_http.h>
 
 #include "ngx_http_upstreamx.h"
+#include "ngx_http_tcp_reuse_pool.h"
 
 
 typedef struct ngx_http_proxy_rewrite_s  ngx_http_proxy_rewrite_t;
@@ -3147,6 +3148,8 @@ static char *
 ngx_http_proxy_pass(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_http_proxy_loc_conf_t *plcf = conf;
+
+    ngx_tcp_reuse_pool_init(cf->log);
 
     size_t                      add;
     u_short                     port;

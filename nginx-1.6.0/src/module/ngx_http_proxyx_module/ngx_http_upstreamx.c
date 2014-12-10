@@ -9,6 +9,9 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#include "ngx_http_tcp_reuse_pool.h"
+
+
 
 #if (NGX_HTTP_CACHE)
 static ngx_int_t ngx_http_upstream_cache(ngx_http_request_t *r,
@@ -20,6 +23,9 @@ static ngx_int_t ngx_http_upstream_cache_send(ngx_http_request_t *r,
 //static ngx_int_t ngx_http_upstream_cache_last_modified(ngx_http_request_t *r,
 //    ngx_http_variable_value_t *v, uintptr_t data);
 #endif
+
+
+static ngx_int_t ngx_tcp_reuse_reinit_conn(ngx_socket_t fd, ngx_peer_connection_t *pc);
 
 static void ngx_http_upstream_init_request(ngx_http_request_t *r);
 static void ngx_http_upstream_resolve_handler(ngx_resolver_ctx_t *ctx);
@@ -1122,6 +1128,147 @@ ngx_http_upstream_check_broken_connection(ngx_http_request_t *r,
     }
 }
 
+static ngx_int_t ngx_tcp_reuse_reinit_conn(ngx_socket_t fd, ngx_peer_connection_t *pc)
+{
+    int                rc;
+    ngx_int_t          event;
+    ngx_socket_t       s;
+    ngx_event_t       *rev, *wev;
+    ngx_connection_t  *c;
+
+    rc = pc->get(pc, pc->data);
+    if (rc != NGX_OK) {
+        return rc;
+    }
+
+    s = fd;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, pc->log, 0, "socket %d", s);
+
+    if (s == (ngx_socket_t) -1) {
+        ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
+                      ngx_socket_n " failed");
+        return NGX_ERROR;
+    }
+
+
+    c = ngx_get_connection(s, pc->log);
+
+    if (c == NULL) {
+        if (ngx_close_socket(s) == -1) {
+            ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
+                          ngx_close_socket_n "failed");
+        }
+
+        return NGX_ERROR;
+    }
+
+    if (pc->rcvbuf) {
+        if (setsockopt(s, SOL_SOCKET, SO_RCVBUF,
+                       (const void *) &pc->rcvbuf, sizeof(int)) == -1)
+        {
+            ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
+                          "setsockopt(SO_RCVBUF) failed");
+            goto failed;
+        }
+    }
+
+    if (ngx_nonblocking(s) == -1) {
+        ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
+                      ngx_nonblocking_n " failed");
+
+        goto failed;
+    }
+
+    c->recv = ngx_recv;
+    c->send = ngx_send;
+    c->recv_chain = ngx_recv_chain;
+    c->send_chain = ngx_send_chain;
+
+    c->sendfile = 1;
+
+    c->log_error = pc->log_error;
+
+    if (pc->sockaddr->sa_family == AF_UNIX) {
+        c->tcp_nopush = NGX_TCP_NOPUSH_DISABLED;
+        c->tcp_nodelay = NGX_TCP_NODELAY_DISABLED;
+
+#if (NGX_SOLARIS)
+        /* Solaris's sendfilev() supports AF_NCA, AF_INET, and AF_INET6 */
+        c->sendfile = 0;
+#endif
+    }
+
+    rev = c->read;
+    wev = c->write;
+
+    rev->log = pc->log;
+    wev->log = pc->log;
+
+    pc->connection = c;
+    
+    c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
+    
+#if (NGX_THREADS)
+
+    /* TODO: lock event when call completion handler */
+
+    rev->lock = pc->lock;
+    wev->lock = pc->lock;
+    rev->own_lock = &c->lock;
+    wev->own_lock = &c->lock;
+
+#endif
+
+    if (ngx_add_conn) {
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_add_conn");
+        if (ngx_add_conn(c) == NGX_ERROR) {
+            ngx_log_debug(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_add_conn err over");
+            goto failed;
+        }
+        ngx_log_debug(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_add_conn over");
+    }
+
+    if (ngx_add_conn) {
+
+        ngx_log_debug0(NGX_LOG_DEBUG_EVENT, pc->log, 0, "connected");
+
+        wev->ready = 1;
+
+        return NGX_OK;
+    }
+
+    if (ngx_event_flags & NGX_USE_CLEAR_EVENT) {
+
+        /* kqueue */
+
+        event = NGX_CLEAR_EVENT;
+
+    } else {
+
+        /* select, poll, /dev/poll */
+
+        event = NGX_LEVEL_EVENT;
+    }
+
+    if (ngx_add_event(rev, NGX_READ_EVENT, event) != NGX_OK) {
+        goto failed;
+    }
+
+
+    ngx_log_debug0(NGX_LOG_DEBUG_EVENT, pc->log, 0, "connected");
+
+    wev->ready = 1;
+
+    return NGX_OK;
+
+failed:
+
+    ngx_close_connection(c);
+    pc->connection = NULL;
+
+    return NGX_ERROR;
+}
 
 static void
 ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
@@ -1129,6 +1276,8 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     ngx_int_t          rc;
     ngx_time_t        *tp;
     ngx_connection_t  *c;
+    ngx_socket_t       fd;
+
 
     r->connection->log->action = "connecting to upstream";
 
@@ -1152,7 +1301,13 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     u->state->response_msec = tp->msec;
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_event_connect_peer");
-    rc = ngx_event_connect_peer(&u->peer);
+    if ((fd = ngx_tcp_reuse_get_active_conn(r->connection->log)) != NGX_ERROR) {
+        rc = ngx_tcp_reuse_reinit_conn(fd, &u->peer);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_event_connect_peer reuse");
+    } else {
+        rc = ngx_event_connect_peer(&u->peer);
+    }
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_event_connect_peer over");
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -3362,7 +3517,7 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
     ngx_time_t  *tp;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "finalize http upstream request: %i", rc);
+                   "finalize http upstreamx request: %i", rc);
 
     if (u->cleanup) {
         *u->cleanup = NULL;
@@ -3419,7 +3574,39 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
             ngx_destroy_pool(u->peer.connection->pool);
         }
 
-        ngx_close_connection(u->peer.connection);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "connection close tcp_reuse : error:%d, close:%d, destroyed:%d", u->peer.connection->error, u->peer.connection->close, u->peer.connection->destroyed);
+        
+        if (!rc && ngx_tcp_reuse_put_active_conn(u->peer.connection->fd, r->connection->log) == NGX_OK) {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "reuse");
+            if (u->peer.connection->read->timer_set) {
+                ngx_del_timer(u->peer.connection->read);
+            }
+
+            if (u->peer.connection->write->timer_set) {
+                ngx_del_timer(u->peer.connection->write);
+            }
+
+            if (ngx_del_conn) {
+                ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_del_conn");
+                ngx_del_conn(u->peer.connection, NGX_DISABLE_EVENT);
+            } else {
+                if (u->peer.connection->read->active || u->peer.connection->read->disabled) {
+                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_del_event read");
+                    ngx_del_event(u->peer.connection->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+                }
+
+                if (u->peer.connection->write->active || u->peer.connection->write->disabled) {
+                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_del_event write");
+                    ngx_del_event(u->peer.connection->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
+                }
+            }
+            u->peer.connection->fd = 1;
+            ngx_reusable_connection(u->peer.connection, 0);
+            ngx_free_connection(u->peer.connection);
+        } else {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "not reuse");
+            ngx_close_connection(u->peer.connection);
+        }
     }
 
     u->peer.connection = NULL;
