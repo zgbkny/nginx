@@ -1304,7 +1304,7 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     if ((fd = ngx_tcp_reuse_get_active_conn(r->connection->log)) != NGX_ERROR) {
         rc = ngx_tcp_reuse_reinit_conn(fd, &u->peer);
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_event_connect_peer reuse");
+                   "ngx_event_connect_peer reuse ");
     } else {
         rc = ngx_event_connect_peer(&u->peer);
     }

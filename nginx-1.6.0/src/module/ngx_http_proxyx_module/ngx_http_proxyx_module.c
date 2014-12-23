@@ -3149,7 +3149,6 @@ ngx_http_proxy_pass(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_http_proxy_loc_conf_t *plcf = conf;
 
-    ngx_tcp_reuse_pool_init(cf->log);
 
     size_t                      add;
     u_short                     port;
@@ -3229,6 +3228,9 @@ ngx_http_proxy_pass(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     u.default_port = port;
     u.uri_part = 1;
     u.no_resolve = 1;
+
+	
+    ngx_tcp_reuse_pool_init(cf->log, &u.url, port);
 
     plcf->upstream.upstream = ngx_http_upstream_add(cf, &u, 0);
     if (plcf->upstream.upstream == NULL) {
