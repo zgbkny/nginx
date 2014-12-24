@@ -21,8 +21,26 @@ static void ngx_tcp_reuse_write_handler(ngx_tcp_reuse_conn_t *reuse_conn);
 
 
 
-int ngx_tcp_reuse_pool_init(ngx_log_t *log)
+int ngx_tcp_reuse_pool_init(ngx_log_t *log, ngx_str_t *str, u_short port)
 {
+	int 			i = 0;
+	u_char			ip[200]; 
+	ngx_socket_t 		s;	
+	struct sockaddr_in 	backendSockAddr;
+	socklen_t 		socklen;
+	int 			rc;
+	ngx_err_t 		err;
+	ngx_memzero(ip, 200);
+	
+	ngx_snprintf(ip, 200, "%V", str);
+	
+	printf("hello %s, %d\n", ip, port);
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_pool_init");
+	backendSockAddr.sin_family = AF_INET;
+	backendSockAddr.sin_port = htons((in_port_t)port);
+	backendSockAddr.sin_addr.s_addr = inet_addr((const char *)ip);
+	socklen = sizeof(struct sockaddr_in);
+
 	ngx_reuse_pool = ngx_create_pool(ngx_tcp_reuse_pool_size, log);
 	if (ngx_reuse_pool == NULL) {
 		ngx_log_error(NGX_LOG_EMERG, log, 0, "could not create ngx_reuse_pool");
@@ -37,6 +55,46 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 	ngx_queue_init(&empty_conns);
 	ngx_queue_init(&active_conns);
 	
+	/*now we need to create some connection to be prepared*/
+	for (i = 0; i < INIT_CONNECTIONS; i++) {
+		s = ngx_socket(AF_INET, SOCK_STREAM, 0);
+		if (s == (ngx_socket_t) -1) {
+			ngx_log_error(NGX_LOG_ALERT, log, ngx_socket_errno, ngx_socket_n "failed");
+			return NGX_ERROR;
+		}
+
+		/* set recv buffer */
+		/*
+		if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, rcvbuf, sizeof(int) == -1)) {
+			ngx_log_error(NGX_LOG_ALERT, log, ngx_socket_errno, "setsockopt(SO_RCVBUF) failed");
+			return NGX_ERROR;
+		}*/
+
+		if (ngx_nonblocking(s) == -1) {	
+			ngx_log_error(NGX_LOG_ALERT, log, ngx_socket_errno, "set nonblocking failed");
+			return NGX_ERROR;
+		}
+
+		/**/
+		if (bind(s, (struct sockaddr *)&backendSockAddr, socklen) == -1) {	
+			ngx_log_error(NGX_LOG_ALERT, log, ngx_socket_errno, "bind failed");
+			return NGX_ERROR;
+		}
+
+		rc = connect(s, (struct sockaddr *)&backendSockAddr, socklen);
+		if (rc == -1) {
+			err = ngx_socket_errno;
+			if (err != NGX_EINPROGRESS) {
+			
+				ngx_log_error(NGX_LOG_ALERT, log, ngx_socket_errno, "bind failed");
+				return NGX_ERROR;
+			}
+		}
+		ngx_tcp_reuse_put_active_conn(s, log);	
+	
+
+	}
+
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_pool_init ok");
 	return NGX_OK;
 }

@@ -26,7 +26,7 @@ struct ngx_tcp_reuse_conn_s{
 
 };
 
-int ngx_tcp_reuse_pool_init(ngx_log_t *log);
+int ngx_tcp_reuse_pool_init(ngx_log_t *log, ngx_str_t *str, u_short port);
 
 ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log);
 

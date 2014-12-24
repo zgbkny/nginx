@@ -98,7 +98,6 @@ typedef struct {
 } ngx_http_proxy_ctx_t;
 
 
-static ngx_int_t ngx_http_proxyx_init_process(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_proxy_eval(ngx_http_request_t *r,
     ngx_http_proxy_ctx_t *ctx, ngx_http_proxy_loc_conf_t *plcf);
 #if (NGX_HTTP_CACHE)
@@ -585,7 +584,7 @@ ngx_module_t  ngx_http_proxyx_module = {
     NGX_HTTP_MODULE,                       /* module type */
     NULL,                                  /* init master */
     NULL,                                  /* init module */
-    ngx_http_proxyx_init_process,          /* init process */
+    NULL,                                  /* init process */
     NULL,                                  /* init thread */
     NULL,                                  /* exit thread */
     NULL,                                  /* exit process */
@@ -3231,7 +3230,7 @@ ngx_http_proxy_pass(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     u.no_resolve = 1;
 
 	
-    //ngx_tcp_reuse_pool_init(cf->log, &u.url, port);
+    ngx_tcp_reuse_pool_init(cf->log, &u.url, port);
 
     plcf->upstream.upstream = ngx_http_upstream_add(cf, &u, 0);
     if (plcf->upstream.upstream == NULL) {
@@ -3853,13 +3852,4 @@ ngx_http_proxy_set_vars(ngx_url_t *u, ngx_http_proxy_vars_t *v)
     }
 
     v->uri = u->uri;
-}
-/**
- * this is the funtion to init tcp connection pool
- */
-static ngx_int_t
-ngx_http_proxyx_init_process(ngx_cycle_t *cycle)
-{
-	ngx_tcp_reuse_pool_init(cycle->log);	 
-	return NGX_OK;
 }
