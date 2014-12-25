@@ -1951,7 +1951,7 @@ ngx_http_send_header(ngx_http_request_t *r)
         r->headers_out.status_line.len = 0;
     }
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                      "ngx_http_top_header_filter:ngx_http_write_filter");
+                      "ngx_http_top_header_filter: now into filter chain");
     return ngx_http_top_header_filter(r);
 }
 
