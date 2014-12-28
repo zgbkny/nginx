@@ -7,7 +7,7 @@
 #define NGX_HTTP_PREFETCH_FILTER_HANDLER_H_
 
 void
-ngx_http_prefetch_handle_url(char *url);
+ngx_http_prefetch_put_url(char *url);
 
 
 
