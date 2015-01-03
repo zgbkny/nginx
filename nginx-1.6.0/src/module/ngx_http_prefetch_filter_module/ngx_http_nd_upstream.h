@@ -35,7 +35,11 @@ struct ngx_http_nd_upstream_s {
 ngx_http_nd_upstream_t *
 ngx_http_nd_upstream_create(ngx_http_request_t *r);
 
-void 
+ngx_int_t 
 ngx_http_nd_upstream_init(ngx_http_nd_upstream_t *u);
+
+void 
+ngx_http_nd_upstream_finalize(ngx_http_nd_upstream_t *u, ngx_int_t rc);
+
 
 #endif /*NGX_HTTP_ND_UPSTREAM_H*/

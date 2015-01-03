@@ -15,13 +15,13 @@ static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 static ngx_http_output_body_filter_pt ngx_http_next_body_filter;
 
 static void 
-get_next(char *p, int next[], int p_len); 
+get_next(u_char *p, ngx_int_t next[], ngx_int_t p_len); 
 
 static ngx_int_t 
-kmp_search(char *s, int s_len, char *p, int p_len);
+kmp_search(u_char *s, ngx_int_t s_len, u_char *p, ngx_int_t p_len);
 
 static ngx_int_t 
-ngx_http_valid_url(char *url, ngx_log_t *log); 
+ngx_http_valid_url(u_char *url, ngx_log_t *log); 
 
 static ngx_int_t
 ngx_http_prefetch_filter_init(ngx_conf_t *cf);
@@ -95,11 +95,11 @@ ngx_module_t ngx_http_prefetch_filter_module = {
 };
 
 static void 
-get_next(char *p, int next[], int p_len) 
+get_next(u_char *p, ngx_int_t next[], ngx_int_t p_len) 
 {
 	next[0] = -1;
-	int k = -1;
-	int j = 0;
+	ngx_int_t		 k = -1;
+	ngx_int_t		 j = 0;
 	while (j < p_len - 1) {
 		if (k == -1 || p[j] == p[k]) {
 			k++;
@@ -112,12 +112,14 @@ get_next(char *p, int next[], int p_len)
 }
 
 static ngx_int_t 
-kmp_search(char *s, int s_len, char *p, int p_len)
+kmp_search(u_char *s, ngx_int_t s_len, u_char *p, ngx_int_t p_len)
 {
+	if (s_len < 1) return -1;
+	if (p_len < 1) return -1;
 	if (s_len < p_len) return -1;
-	int i = 0;
-	int j = 0;
-	int next[s_len + 1];
+	ngx_int_t		 i = 0;
+	ngx_int_t		 j = 0;
+	ngx_int_t		 next[s_len + 1];
 	ngx_memzero(next, s_len + 1);
 	get_next(p, next, p_len);
 
@@ -181,8 +183,10 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 }
 
 static ngx_int_t 
-ngx_http_valid_url(char *url, ngx_log_t *log) 
+ngx_http_valid_url(u_char *url, ngx_log_t *log) 
 {
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_valid_url");
+	
 	size_t 		len;
 	size_t		i = 0;
 	ngx_str_t	http_str = ngx_string("http://");
@@ -198,7 +202,7 @@ ngx_http_valid_url(char *url, ngx_log_t *log)
 	
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_valid_url");
 
-	len = strlen(url);
+	len = strlen((char *)url);
 	if (len < 8) {
 		goto error;
 	} 
@@ -211,43 +215,43 @@ ngx_http_valid_url(char *url, ngx_log_t *log)
 	while (url[i] == ' ') {
 		url[i] = 0;
 	}	
-	len = strlen(url);
+	len = strlen((char *)url);
 	
 	// check if there is a dot 
-	if (kmp_search(url + len - 5, 5, (char *)dot_str.data, dot_str.len) == -1) {
+	if (kmp_search(url + len - 5, 5, dot_str.data, dot_str.len) == -1) {
 		goto error;
 	}
 
 	// check if this is a gif
-	if (kmp_search(url + len - 5, 5, (char *)gif_str.data, gif_str.len) != -1) {
+	if (kmp_search(url + len - 5, 5, gif_str.data, gif_str.len) != -1) {
 		return NGX_GIF_RETURN;
 	}
 	// check if this is a png
-	if (kmp_search(url + len - 5, 5, (char *)png_str.data, png_str.len) != -1) {
+	if (kmp_search(url + len - 5, 5, png_str.data, png_str.len) != -1) {
 		return NGX_PNG_RETURN;
 	}
 	// check if this is a jpg
-	if (kmp_search(url + len - 5, 5, (char *)jpg_str.data, jpg_str.len) != -1) {
+	if (kmp_search(url + len - 5, 5, jpg_str.data, jpg_str.len) != -1) {
 		return NGX_JPG_RETURN;
 	}
 	// check if this is a css
-	if (kmp_search(url + len - 5, 5, (char *)css_str.data, css_str.len) != -1) {
+	if (kmp_search(url + len - 5, 5, css_str.data, css_str.len) != -1) {
 		return NGX_CSS_RETURN;
 	}
 	// check if this is a js
-	if (kmp_search(url + len - 5, 5, (char *)js_str.data, js_str.len) != -1) {
+	if (kmp_search(url + len - 5, 5, js_str.data, js_str.len) != -1) {
 		return NGX_JS_RETURN;
 	}
 	// check if this is a flv
-	if (kmp_search(url + len - 5, 5, (char *)flv_str.data, flv_str.len) != -1) {
+	if (kmp_search(url + len - 5, 5, flv_str.data, flv_str.len) != -1) {
 		return NGX_FLV_RETURN;
 	}
 	// check if this is a ico
-	if (kmp_search(url + len - 5, 5, (char *)ico_str.data, ico_str.len) != -1) {
+	if (kmp_search(url + len - 5, 5, ico_str.data, ico_str.len) != -1) {
 		return NGX_ICO_RETURN;
 	}
 	// check if this is a swf
-	if (kmp_search(url + len - 5, 5, (char *)swf_str.data, swf_str.len) != -1) {
+	if (kmp_search(url + len - 5, 5, swf_str.data, swf_str.len) != -1) {
 		return NGX_SWF_RETURN;
 	}
 
@@ -259,31 +263,33 @@ error:
 }
 
 static void
-ngx_http_prefetch_filter_url(ngx_http_request_t *r, char *buf_start, char *buf_end, ngx_log_t *log)
+ngx_http_prefetch_filter_url(ngx_http_request_t *r, u_char *buf_start, u_char *buf_end, ngx_log_t *log)
 {
 	ngx_int_t 				type = 0;	
 	ngx_str_t				src_str = ngx_string("src=");
 	ngx_str_t				href_str = ngx_string("href=");
-	int 					index = -1;
-	int 					start = 0;	
-	int 					end = 0;
-	char					*buf_str;
-	char					temp[1000];
+	ngx_int_t 				index = -1;
+	ngx_int_t 				start = 0;	
+	ngx_int_t 				end = 0;
+	u_char					*buf_str;
+	u_char					temp[1000];
 
 	ngx_memzero(temp, 1000);
-	
 	buf_str = buf_start;
 	start = 0;
 	end  = 0;
 	index = -1;
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch \n");//%s", buf_str);
 	while (1) {
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch check 1\n");//%s", buf_str);
 		buf_str = buf_str + start;
 		if (buf_str > buf_end) break;
-		index = kmp_search(buf_str, buf_end - buf_str, (char *)src_str.data, src_str.len);
+		index = kmp_search(buf_str, buf_end - buf_str, src_str.data, src_str.len);
 		if (index != -1) {
-			if (buf_str[index + src_str.len + 1] == '"' || buf_str[index + src_str.len]== '"') {		
+			if (buf_str + index + src_str.len + 1 > buf_end) break;
+			if (buf_str[index + src_str.len + 1] == '"' || buf_str[index + src_str.len] == '"') {		
 				buf_str = buf_str + index + src_str.len;
+				if (buf_str > buf_end) break;
 				if (buf_str[0] == '"') {
 					buf_str += 1;
 				} 
@@ -291,11 +297,12 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, char *buf_start, char *buf_e
 //							"ngx_http_prefetch_body_filter src:%s", buf_str);
 				start = 0;
 				end = -1;
-				end = kmp_search(buf_str, buf_end - buf_str, "\"", 1); 
+				end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\"", 1); 
 				
 				
 				if (end != -1) {
 
+					if (buf_str + end > buf_end || end > 1000) break;
 					ngx_memcpy(temp, buf_str, end);
 					temp[end] = 0;			
 //					ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, 
@@ -303,7 +310,7 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, char *buf_start, char *buf_e
 //					ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, 
 //							"ngx_http_prefetch_filter_url src:\n%s", temp);
 					if ((type = ngx_http_valid_url(temp, r->connection->log)) > NGX_OK) {
-						ngx_http_prefetch_handle_url(type, temp, r);
+						ngx_http_prefetch_handle_url(type, temp, end, r);
 					}
 					start = end;
 				} else {
@@ -323,15 +330,19 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, char *buf_start, char *buf_e
 	end  = 0;
 	index = -1;
 	while (1) {
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch check href\n");//%s", buf_str);
 		buf_str = buf_str + start;
 		if (buf_str > buf_end) break;
-		index = kmp_search(buf_str, buf_end - buf_str, (char *)href_str.data, href_str.len);
+		index = kmp_search(buf_str, buf_end - buf_str, href_str.data, href_str.len);
 		if (index != -1) {
 			
+			if (buf_str + index + href_str.len + 1 >= buf_end) break;
 					
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch check href 1\n");//%s", buf_str);
 			if (buf_str[index + href_str.len + 1] == '"' || buf_str[index + href_str.len]== '"') {
 						
 				buf_str = buf_str + index + href_str.len;
+				if (buf_str > buf_end) break;
 				if (buf_str[0] == '"') {
 					buf_str += 1;
 				} 
@@ -339,8 +350,10 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, char *buf_start, char *buf_e
 //							"ngx_http_prefetch_body_filter src:%s", buf_str);
 				start = 0;
 				end = -1;
-				end = kmp_search(buf_str, buf_end - buf_str, "\"", 1);
+				end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\"", 1);
 				if (end != -1) {
+
+					if (buf_str + end > buf_end || end > 1000) break;
 					ngx_memcpy(temp, buf_str, end);
 					
 					temp[end] = 0;			
@@ -350,7 +363,7 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, char *buf_start, char *buf_e
 //							"ngx_http_prefetch_filter_url href:\n%s", temp);
 				
 					if ((type = ngx_http_valid_url(temp, r->connection->log)) > NGX_OK) {
-						ngx_http_prefetch_handle_url(type, temp, r);
+						ngx_http_prefetch_handle_url(type, temp, end, r);
 					}
 					start = end;
 				} else {
@@ -372,7 +385,7 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 	ngx_http_prefetch_ctx_t			*ctx;
 	ngx_chain_t 				*normal_chain;
 	ngx_buf_t 				*buf;
-
+	ngx_buf_t				*temp_buf;
 
 	normal_chain = in;
 
@@ -393,7 +406,10 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 		/*2: we already get normal data to analysis */
 		while (normal_chain) {
 			buf = normal_chain->buf;
-			ngx_http_prefetch_filter_url(r, (char *)buf->pos, (char *)buf->end, r->connection->log);
+			temp_buf = ngx_create_temp_buf(r->pool, buf->last - buf->pos);
+			ngx_memcpy(temp_buf->last, buf->pos, buf->last - buf->pos);
+			temp_buf->last += (buf->last - buf->pos);
+			ngx_http_prefetch_filter_url(r, temp_buf->pos, temp_buf->last, r->connection->log);
 			normal_chain = normal_chain->next;
 		}
 	}

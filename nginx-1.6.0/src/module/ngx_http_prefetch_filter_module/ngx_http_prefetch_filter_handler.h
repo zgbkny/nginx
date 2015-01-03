@@ -23,7 +23,7 @@
 
 
 void
-ngx_http_prefetch_handle_url(ngx_int_t type, char *url, ngx_http_request_t *r);
+ngx_http_prefetch_handle_url(ngx_int_t type, u_char *url, size_t len, ngx_http_request_t *r);
 
 
 
