@@ -27,6 +27,8 @@ struct ngx_http_nd_upstream_s {
 	ngx_peer_connection_t			peer;
 	ngx_chain_t			       *request_bufs;
 
+	ngx_msec_t				timeout;
+	size_t					send_lowat;
 	struct sockaddr			       *sockaddr;
 	socklen_t 				socklen;
 };
