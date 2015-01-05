@@ -279,7 +279,7 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, u_char *buf_start, u_char *b
 	start = 0;
 	end  = 0;
 	index = -1;
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch \n");//%s", buf_str);
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch %s", buf_str);
 	while (1) {
 		ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch check 1\n");//%s", buf_str);
 		buf_str = buf_str + start;

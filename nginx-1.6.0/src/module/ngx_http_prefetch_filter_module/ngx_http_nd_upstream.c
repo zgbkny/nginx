@@ -32,20 +32,32 @@ ngx_http_nd_upstream_send_request(ngx_http_nd_upstream_t *u)
 {
 	ssize_t			 n;
 	ngx_connection_t	*c;
+	ngx_buf_t		*buffer;
+
+
+	if (u->request_bufs) {
+		buffer = u->request_bufs->buf;
+	} else {
+		return NGX_OK;
+	}	
 
 	c = u->peer.connection;
-	if (u->buffer.last <= u->buffer.pos) return NGX_OK;
+	if (buffer->last <= buffer->pos) return NGX_OK;
 
-	n = c->send(c, u->buffer.pos, u->buffer.last - u->buffer.pos);
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_htto_nd_upstream_send_request check");
+	n = ngx_unix_send(c, buffer->pos, buffer->last - buffer->pos);
 	if (n == -1) {
 		return NGX_ERROR;
 	}	
 
-	if (n < u->buffer.last - u->buffer.pos) {
-		u->buffer.last += n;
+	
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_htto_nd_upstream_send_request check 2");
+	if (n < buffer->last - buffer->pos) {
+		buffer->pos += n;
 		return NGX_AGAIN; 	
 	}
-
+	
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_htto_nd_upstream_send_request:%d", n);
 	return NGX_OK;
 } 
 
@@ -58,6 +70,7 @@ ngx_http_nd_upstream_dummy_handler(ngx_http_nd_upstream_t *u)
 void 
 ngx_http_nd_upstream_wev_handler(ngx_http_nd_upstream_t *u)
 {
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_wev_handler");
 	ngx_connection_t	*c;
 	ngx_int_t		 rc;	
 	c = u->peer.connection;
@@ -68,6 +81,7 @@ ngx_http_nd_upstream_wev_handler(ngx_http_nd_upstream_t *u)
 	}
 
 	rc = ngx_http_nd_upstream_send_request(u);
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_wev_handler:%d", rc);
 	
 	if (rc == NGX_ERROR) {
 		ngx_http_nd_upstream_finalize(u, NGX_ERROR);
@@ -92,8 +106,16 @@ ngx_http_nd_upstream_wev_handler(ngx_http_nd_upstream_t *u)
 	if (c->read->ready) {
 		ngx_http_nd_upstream_rev_handler(u);
 		return;
+	} else {
+	
+		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_wev_handler set read");
+		if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
+			ngx_http_nd_upstream_finalize(u, NGX_ERROR);
+			return;
+		}
 	}
 
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_wev_handler check");
 	// clear write callback
 	u->write_event_handler = ngx_http_nd_upstream_dummy_handler;
 	if (ngx_handle_write_event(c->write, 0) != NGX_OK) {
@@ -106,6 +128,7 @@ ngx_http_nd_upstream_wev_handler(ngx_http_nd_upstream_t *u)
 void 
 ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 {
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_rev_handler");
 	ngx_connection_t 	*c;
 	ssize_t			 n;
 
@@ -120,7 +143,7 @@ ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 		u->buffer.end = u->buffer.start + ND_UPSTREAM_BUFFER_SIZE;
 		u->buffer.temporary = 1;
 
-		n = c->recv(c, u->buffer.last, u->buffer.end - u->buffer.last);
+		n = ngx_unix_recv(c, u->buffer.last, u->buffer.end - u->buffer.last);
 		
 		if (n == NGX_AGAIN) {
 			if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
@@ -144,6 +167,7 @@ void
 ngx_http_nd_upstream_finalize(ngx_http_nd_upstream_t *u, ngx_int_t rc)
 {
 
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_finalize rc:%d", rc);
 	if (u->peer.connection) {
 		if (u->peer.connection->pool) {
 			ngx_destroy_pool(u->peer.connection->pool);
@@ -289,6 +313,8 @@ ngx_http_nd_upstream_init(ngx_http_nd_upstream_t *u)
 		goto failed;
 	}
 	if (rc == -1) {
+		ngx_add_timer(c->write, u->timeout);
+
 		// NGX_EINPROGRESS
 		if (ngx_add_event(wev, NGX_WRITE_EVENT, event) != NGX_OK) {
 			goto failed;
@@ -298,7 +324,8 @@ ngx_http_nd_upstream_init(ngx_http_nd_upstream_t *u)
 
 	wev->ready = 1;
 
-	
+	ngx_http_nd_upstream_wev_handler(u);
+		
 	return NGX_OK;
 
 failed:
