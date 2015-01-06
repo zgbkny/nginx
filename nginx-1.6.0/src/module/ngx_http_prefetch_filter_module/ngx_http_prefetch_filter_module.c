@@ -406,9 +406,10 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 		/*2: we already get normal data to analysis */
 		while (normal_chain) {
 			buf = normal_chain->buf;
-			temp_buf = ngx_create_temp_buf(r->pool, buf->last - buf->pos);
-			ngx_memcpy(temp_buf->last, buf->pos, buf->last - buf->pos);
-			temp_buf->last += (buf->last - buf->pos);
+			//temp_buf = ngx_create_temp_buf(r->pool, buf->last - buf->pos);
+			//ngx_memcpy(temp_buf->last, buf->pos, buf->last - buf->pos);
+			//temp_buf->last += (buf->last - buf->pos);
+			temp_buf = buf;
 			ngx_http_prefetch_filter_url(r, temp_buf->pos, temp_buf->last, r->connection->log);
 			normal_chain = normal_chain->next;
 		}
