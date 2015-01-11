@@ -23,7 +23,8 @@ static void ngx_tcp_reuse_write_handler(ngx_tcp_reuse_conn_t *reuse_conn);
 
 int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 {
-	ngx_reuse_pool = ngx_create_pool(ngx_tcp_reuse_pool_size, log);
+    ngx_reuse_pool = ngx_create_pool(ngx_tcp_reuse_pool_size, log);
+    
 	if (ngx_reuse_pool == NULL) {
 		ngx_log_error(NGX_LOG_EMERG, log, 0, "could not create ngx_reuse_pool");
 		exit(1);

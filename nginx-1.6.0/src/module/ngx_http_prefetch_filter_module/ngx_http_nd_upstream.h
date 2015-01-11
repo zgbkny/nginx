@@ -18,19 +18,24 @@ struct ngx_http_nd_upstream_s {
 	ngx_http_nd_upstream_handler_pt		read_event_handler;
 	ngx_http_nd_upstream_handler_pt		write_event_handler;
 
-	ngx_log_t 			       *log;
+	ngx_log_t						   *log;
 
-	ngx_pool_t 			       *pool;
+	ngx_pool_t						   *pool;
 
-	ngx_buf_t 				buffer;
+	ngx_buf_t 							buffer;
 
-	ngx_peer_connection_t			peer;
-	ngx_chain_t			       *request_bufs;
+	ngx_peer_connection_t				peer;
+	ngx_chain_t						   *request_bufs;
+	ngx_chain_t						   *response_bufs;
 
-	ngx_msec_t				timeout;
-	size_t					send_lowat;
-	struct sockaddr			       *sockaddr;
-	socklen_t 				socklen;
+	ngx_chain_t 					  **last_response_bufs;
+
+	size_t								response_lens;
+
+	ngx_msec_t							timeout;
+	size_t								send_lowat;
+	struct sockaddr					   *sockaddr;
+	socklen_t							socklen;
 };
 
 

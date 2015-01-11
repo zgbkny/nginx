@@ -129,8 +129,10 @@ void
 ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_rev_handler");
-	ngx_connection_t 	*c;
-	ssize_t			 n;
+	ngx_connection_t 			*c;
+	ssize_t			 			 n;
+	ngx_chain_t					*cl;
+	ngx_buf_t					*buffer;
 
 	c = u->peer.connection;
 	if (c->read->timedout) {
@@ -144,7 +146,7 @@ ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 		u->buffer.temporary = 1;
 
 		n = ngx_unix_recv(c, u->buffer.last, u->buffer.end - u->buffer.last);
-		
+		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_rev_handler:%d", n);
 		if (n == NGX_AGAIN) {
 			if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
 				ngx_http_nd_upstream_finalize(u, NGX_ERROR);
@@ -215,6 +217,11 @@ ngx_http_nd_upstream_create(ngx_http_request_t *r)
 	u->request_bufs = NULL;
 
 	u->timeout = 60000; 
+
+	u->request_bufs = NULL;
+	u->response_bufs = NULL;
+	u->last_response_bufs = NULL;
+	u->response_lens = 0;
 
 	return u;
 }

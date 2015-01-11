@@ -2346,6 +2346,8 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "u->buffering %d", u->buffering);
+
     if (!u->buffering) {
 
         if (u->input_filter == NULL) {
@@ -3574,9 +3576,10 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
             ngx_destroy_pool(u->peer.connection->pool);
         }
 
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "connection close tcp_reuse : error:%d, close:%d, destroyed:%d", u->peer.connection->error, u->peer.connection->close, u->peer.connection->destroyed);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "connection close tcp_reuse : error:%d, close:%d, destroyed:%d, rc:%d", u->peer.connection->error, u->peer.connection->close, u->peer.connection->destroyed, rc);
         
-        if (!rc && ngx_tcp_reuse_put_active_conn(u->peer.connection->fd, r->connection->log) == NGX_OK) {
+        //if (!rc && ngx_tcp_reuse_put_active_conn(u->peer.connection->fd, r->connection->log) == NGX_OK) {
+        if (ngx_tcp_reuse_put_active_conn(u->peer.connection->fd, r->connection->log) == NGX_OK) {
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "reuse");
             if (u->peer.connection->read->timer_set) {
                 ngx_del_timer(u->peer.connection->read);

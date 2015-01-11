@@ -62,8 +62,8 @@ ngx_http_nd_upstream_create_request(ngx_int_t type, ngx_http_nd_upstream_t *u, u
 	buffer->last += (uri_end - uri_start);
 	ngx_memcpy(buffer->last, " HTTP/1.1\r\n", 11);
 	buffer->last += 11;
-	ngx_memcpy(buffer->last, "Connection: keep-alive\r\n", 24);
-	buffer->last += 24;
+	ngx_memcpy(buffer->last, "Connection: close\r\n", 19);
+	buffer->last += 19;
 	ngx_memcpy(buffer->last, "Host: ", 6);
 	buffer->last += 6;
 	ngx_memcpy(buffer->last, url + host_start, host_end - host_start);

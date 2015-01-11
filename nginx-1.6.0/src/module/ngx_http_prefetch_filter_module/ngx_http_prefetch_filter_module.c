@@ -338,7 +338,7 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, u_char *buf_start, u_char *b
 			
 			if (buf_str + index + href_str.len + 1 >= buf_end) break;
 					
-		ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch check href 1\n");//%s", buf_str);
+			ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch check href 1\n");//%s", buf_str);
 			if (buf_str[index + href_str.len + 1] == '"' || buf_str[index + href_str.len]== '"') {
 						
 				buf_str = buf_str + index + href_str.len;
@@ -383,10 +383,14 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
 
 	ngx_http_prefetch_ctx_t			*ctx;
-	ngx_chain_t 				*normal_chain;
-	ngx_buf_t 				*buf;
-	ngx_buf_t				*temp_buf;
+	ngx_chain_t 					*normal_chain;
+	ngx_buf_t 						*buf;
+	ngx_buf_t						*temp_buf;
+	ngx_time_t 						*temp_time;
+	ngx_time_t 						*end_time;
 
+	ngx_time_update();
+	temp_time = ngx_timeofday();
 	normal_chain = in;
 
 	ctx = ngx_http_get_module_ctx(r, ngx_http_prefetch_filter_module);
@@ -406,14 +410,20 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 		/*2: we already get normal data to analysis */
 		while (normal_chain) {
 			buf = normal_chain->buf;
-			//temp_buf = ngx_create_temp_buf(r->pool, buf->last - buf->pos);
-			//ngx_memcpy(temp_buf->last, buf->pos, buf->last - buf->pos);
-			//temp_buf->last += (buf->last - buf->pos);
-			temp_buf = buf;
+			temp_buf = ngx_create_temp_buf(r->pool, buf->last - buf->pos);
+			ngx_memcpy(temp_buf->last, buf->pos, buf->last - buf->pos);
+			temp_buf->last += (buf->last - buf->pos);
+			//temp_buf = buf;
 			ngx_http_prefetch_filter_url(r, temp_buf->pos, temp_buf->last, r->connection->log);
 			normal_chain = normal_chain->next;
 		}
 	}
+
+	ngx_time_update();
+	end_time = ngx_timeofday();
+
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "body filter time:%d, %d", end_time->sec - temp_time->sec, end_time->msec - temp_time->msec);
+
 	return ngx_http_next_body_filter(r, in);
 }
 

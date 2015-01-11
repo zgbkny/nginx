@@ -891,7 +891,7 @@ ngx_http_proxy_create_key(ngx_http_request_t *r)
         if (ngx_http_complex_value(r, &plcf->cache_key, key) != NGX_OK) {
             return NGX_ERROR;
         }
-
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_proxy_create_key 1:%s", plcf->cache_key.value.data);
         return NGX_OK;
     }
 
@@ -956,6 +956,7 @@ ngx_http_proxy_create_key(ngx_http_request_t *r)
 
     key->len = p - key->data;
     u->uri = *key;
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_proxy_create_key:%s", key->data);
 
     return NGX_OK;
 }
