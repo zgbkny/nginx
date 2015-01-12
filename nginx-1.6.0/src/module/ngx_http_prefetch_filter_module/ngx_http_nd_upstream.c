@@ -1,4 +1,5 @@
 #include "ngx_http_nd_upstream.h"
+#include "ngx_http_prefetch_tcp_pool.h"
 
 #define ND_UPSTREAM_POOL_SIZE (1024 * 12)
 #define ND_UPSTREAM_BUFFER_SIZE (1024 * 4)
@@ -11,11 +12,20 @@ ngx_http_nd_upstream_wev_handler(ngx_http_nd_upstream_t *u);
 void 
 ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u);
 
+static ngx_int_t
+ngx_http_nd_upstream_push_response(ngx_http_nd_upstream *u);
+
+static ngx_int_t
+ngx_http_nd_upstream_read_from_downstream(ngx_http_nd_upstream_t *u);
+
+static ngx_int_t
+ngx_http_nd_upstream_write_to_downstream(ngx_http_nd_upstream_t *u);
+
 static void 
 ngx_http_nd_upstream_event_handler(ngx_event_t *ev)
 {
 	ngx_http_nd_upstream_t 		*nd_u;
-	ngx_connection_t		*c;
+	ngx_connection_t			*c;
 	ngx_log_debug(NGX_LOG_DEBUG_EVENT, ev->log, 0, "ngx_http_nd_upstream_event_handler");	
 	c = ev->data;
 	nd_u = c->data;
@@ -27,12 +37,28 @@ ngx_http_nd_upstream_event_handler(ngx_event_t *ev)
 	}
 }
 
+static void 
+ngx_http_nd_downstream_event_handler(ngx_event_t *ev)
+{
+	ngx_http_nd_upstream_t 		*nd_u;
+	ngx_connection_t			*c;
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, ev->log, 0, "ngx_http_nd_upstream_event_handler");	
+	c = ev->data;
+	nd_u = c->data;
+
+	if (ev->write) {
+		nd_u->write_downstream_event_handler(nd_u);
+	} else {
+		nd_u->read_downstream_event_handler(nd_u);
+	}
+}
+
 static ngx_int_t
 ngx_http_nd_upstream_send_request(ngx_http_nd_upstream_t *u)
 {
-	ssize_t			 n;
+	ssize_t			 	 n;
 	ngx_connection_t	*c;
-	ngx_buf_t		*buffer;
+	ngx_buf_t			*buffer;
 
 
 	if (u->request_bufs) {
@@ -60,6 +86,166 @@ ngx_http_nd_upstream_send_request(ngx_http_nd_upstream_t *u)
 	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_htto_nd_upstream_send_request:%d", n);
 	return NGX_OK;
 } 
+
+static ngx_int_t
+ngx_http_nd_upstream_read_from_downstream(ngx_http_nd_upstream_t *u)
+{
+	ngx_connection_t 	*c;
+
+	c = u->conn;
+	if (c->read->timedout) {
+		ngx_http_nd_upstream_finalize(u, NGX_ERROR);
+		return;
+	}
+
+	return NGX_OK;
+}
+
+static ngx_int_t
+ngx_http_nd_upstream_write_to_downstream(ngx_http_nd_upstream_t *u)
+{
+	ssize_t			 	 n;
+	ngx_connection_t	*c;
+	ngx_buf_t			*buffer;
+	ngx_chain_t 		*cl;
+
+	c = u->conn;
+
+	if (c->write->timedout) {
+		ngx_http_nd_upstream_finalize(u, NGX_ERROR);
+		return;
+	}
+
+	cl = u->push_request;
+
+	while (cl) {
+		buffer = cl->buf;
+
+		n = ngx_unix_send(c, buffer->pos, buffer->last - buffer->pos);
+		if (n == -1 || n == 0) {
+			cl = NULL;
+			break;
+		}	
+
+		
+		if (n < buffer->last - buffer->pos) {
+			buffer->pos += n;
+			break; 	
+		} else if (n == buffer->last - buffer->pos) {
+			cl = cl->next;
+		} else {
+			cl = NULL;
+		}
+	}
+	u->push_request = cl;
+	if (cl == NULL) {
+		// here we already send all data to client, we can cycle conn
+		if (ngx_http_prefetch_put_tcp_conn(u->conn->fd, u->log) == NGX_OK) {
+     
+            if (u->conn->read->timer_set) {
+                ngx_del_timer(u->peer.connection->read);
+            }
+
+            if (u->conn->write->timer_set) {
+                ngx_del_timer(u->peer.connection->write);
+            }
+
+            if (ngx_del_conn) {
+                ngx_del_conn(u->conn, NGX_DISABLE_EVENT);
+            } else {
+                if (u->conn->read->active || u->conn->read->disabled) {
+                    ngx_del_event(u->conn->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+                
+
+                if (u->conn->write->active || u->conn->write->disabled) {
+                    ngx_del_event(u->conn->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
+                }
+            }
+            u->conn->fd = 1;
+            ngx_reusable_connection(u->peer.connection, 0);
+            ngx_free_connection(u->peer.connection);
+            u->conn = NULL;
+        } 
+		ngx_http_nd_upstream_finalize(u);
+	} else {
+		u->write_downstream_event_handler = ngx_http_nd_upstream_write_to_downstream;
+		if (ngx_add_event(c->write, NGX_READ_EVENT, event) != NGX_OK) {
+			return NGX_ERROR;
+		}
+		ngx_add_timer(c->write, u->timeout);
+	}
+
+	return NGX_OK;
+}
+
+static ngx_int_t
+ngx_http_nd_upstream_push_response(ngx_http_nd_upstream *u)
+{
+	ngx_chain_t 			*cl;
+	ngx_str_t 				*str;
+	u_char 					 temp[20];
+	ngx_socket_t 			 s;
+	ngx_connection_t 		*c;
+
+
+
+	cl = u->request_bufs;
+	cl->next = NULL;
+	// reset request 
+	cl->buf->pos = cl->buf->start;
+	cl->buf->last -= 2;
+	// add response
+	str = ngx_string("Content-Length: ");
+	ngx_memcpy(cl->buf->last, str->data, str->len);
+	buffer->last += str_len;
+	ngx_memzero(temp, 20);
+	ngx_snprintf(temp, 20, "%z", u->response_lens);
+	ngx_memcpy(cl->buf->last, temp, strlen(temp));
+	buffer->last += strlen(temp);
+	ngx_memcpy(cl->buf->last, "\r\n", 2);
+	buffer->last += 2;
+
+	// construct push request
+	cl->next = response_bufs;
+	u->push_request = cl;
+
+	// now we can send push request to client
+	s = ngx_http_prefetch_get_tcp_conn(u->log);
+	if (s == (ngx_socket_t) -1) {
+		// attemp to syn one tcp conn
+		return NGX_ERROR;
+	}
+	// now, we need to get conn 
+	c = ngx_get_connection(s, u->log);
+	if (c == NULL) {
+		return NGX_ERROR;
+	} else {
+		c->write->ready = 1;
+		c->read_ready = 1;
+	}
+	u->conn = c;
+	if (ngx_add_conn) {
+		if (ngx_add_conn(c) == NGX_ERROR) {
+			return NGX_ERROR;
+		}
+	} else {
+		return NGX_ERROR;
+	}
+	// here we already got one conn and we need to init it
+	c->read.handler = ngx_http_nd_downstream_event_handler;
+	c->write.handler = ngx_http_nd_downstream_event_handler;
+
+	if (!c->write->ready) {
+		if (ngx_add_event(c->write, NGX_READ_EVENT, event) != NGX_OK) {
+			return NGX_ERROR;
+		}
+		ngx_add_timer(c->write, u->timeout);
+	} else {
+		ngx_http_nd_upstream_write_to_downstream(u);
+	}
+
+	return NGX_OK;
+}
 
 void
 ngx_http_nd_upstream_dummy_handler(ngx_http_nd_upstream_t *u)
@@ -139,13 +325,23 @@ ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 		ngx_http_nd_upstream_finalize(u, NGX_ERROR);
 		return;
 	}
-	for ( ; ; ) {
-		u->buffer.pos = u->buffer.start;
-		u->buffer.last = u->buffer.start;
-		u->buffer.end = u->buffer.start + ND_UPSTREAM_BUFFER_SIZE;
-		u->buffer.temporary = 1;
 
-		n = ngx_unix_recv(c, u->buffer.last, u->buffer.end - u->buffer.last);
+	buffer = ngx_create_temp_buf(u->pool, ND_UPSTREAM_BUFFER_SIZE);
+	if (buffer == NULL) {
+		ngx_http_nd_upstream_finalize(u, NGX_ERROR);
+		return;
+	}
+	cl = ngx_alloc_chain_link(u->pool);
+	if (cl == NULL) {
+		ngx_http_nd_upstream_finalize(u, NGX_ERROR);
+		return;
+	}
+	
+
+	for ( ; ; ) {
+		
+
+		n = ngx_unix_recv(c, buffer.last, buffer.end - buffer.last);
 		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_rev_handler:%d", n);
 		if (n == NGX_AGAIN) {
 			if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
@@ -154,14 +350,30 @@ ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 			}
 			return;
 		}			
-		if (n == NGX_ERROR || n == 0) {
+		if (n == 0) {
+			// here we start to push response to client
+			if (ngx_http_nd_upstream_push_response(u) != NGX_OK) {
+				ngx_http_nd_upstream_finalize(u, NGX_ERROR);
+			}
+			return;
+		}
+		if (n == NGX_ERROR) {
 			ngx_http_nd_upstream_finalize(u, NGX_OK);
 			return;
 		}
-
+		buffer->last += n;
+		u->response_lens += n;
 		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_rev_handler:%s", u->buffer.pos);
 	}
 
+	cl->buf = buffer;
+	cl->next = NULL;
+	if (u->last_response_bufs) {
+		*u->last_response_bufs = cl; 
+	} else {
+		u->response_bufs = cl;
+	}
+	u->last_response_bufs = &cl->next;
 }
 
 
@@ -177,7 +389,15 @@ ngx_http_nd_upstream_finalize(ngx_http_nd_upstream_t *u, ngx_int_t rc)
 		ngx_close_connection(u->peer.connection);
 	} 	
 	u->peer.connection = NULL;
+	if (u->conn) {
 
+		if (u->conn->pool) {
+			ngx_destroy_pool(u->conn->pool);
+		}
+		// cycle fd 
+		ngx_close_connection(u->conn);
+	}
+	u->conn = NULL;
 
 
 	if (u->pool) {
@@ -222,6 +442,9 @@ ngx_http_nd_upstream_create(ngx_http_request_t *r)
 	u->response_bufs = NULL;
 	u->last_response_bufs = NULL;
 	u->response_lens = 0;
+	u->push_request = NULL;
+	u->upstream_tcp_nodelay = NGX_TCP_NODELAY_UNSET;
+	u->downstream_tcp_nodelay = NGX_TCP_NODELAY_UNSET;
 
 	return u;
 }
@@ -229,13 +452,13 @@ ngx_http_nd_upstream_create(ngx_http_request_t *r)
 ngx_int_t
 ngx_http_nd_upstream_init(ngx_http_nd_upstream_t *u)
 {
-	int				 rc;
-	ngx_err_t			 err;
+	int				 	 	 rc;
+	ngx_err_t			 	 err;
 	ngx_connection_t 		*c;
 	ngx_socket_t			 s;
-	ngx_event_t			*rev, *wev;
-	ngx_int_t			 event;
-	ngx_uint_t			 level;
+	ngx_event_t				*rev, *wev;
+	ngx_int_t			 	 event;
+	ngx_uint_t			  	 level;
 
 	s = ngx_socket(u->sockaddr->sa_family, SOCK_STREAM, 0);
 

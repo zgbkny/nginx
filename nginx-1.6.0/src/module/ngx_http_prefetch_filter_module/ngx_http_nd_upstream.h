@@ -18,17 +18,27 @@ struct ngx_http_nd_upstream_s {
 	ngx_http_nd_upstream_handler_pt		read_event_handler;
 	ngx_http_nd_upstream_handler_pt		write_event_handler;
 
+	ngx_http_nd_upstream_handler_pt		read_downstream_event_handler;
+	ngx_http_nd_upstream_handler_pt		write_downstream_event_handler;
+
+
 	ngx_log_t						   *log;
 
 	ngx_pool_t						   *pool;
 
 	ngx_buf_t 							buffer;
 
+	ngx_connection_t 				   *conn;
+
 	ngx_peer_connection_t				peer;
 	ngx_chain_t						   *request_bufs;
 	ngx_chain_t						   *response_bufs;
+	ngx_chain_t 					   *push_request;
 
 	ngx_chain_t 					  **last_response_bufs;
+
+	int 								upstream_tcp_nodelay;
+	int 								downstream_tcp_nodelay;
 
 	size_t								response_lens;
 

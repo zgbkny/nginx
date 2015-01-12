@@ -45,6 +45,7 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 
 ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 {
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_get_active_conn");
 	ngx_socket_t fd = -1;
 	ngx_err_t    err;
 	u_char test[2];
