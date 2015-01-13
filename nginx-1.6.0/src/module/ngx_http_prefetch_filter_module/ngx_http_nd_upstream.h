@@ -35,7 +35,7 @@ struct ngx_http_nd_upstream_s {
 	ngx_chain_t						   *response_bufs;
 	ngx_chain_t 					   *push_request;
 
-	ngx_chain_t 					  **last_response_bufs;
+	ngx_chain_t 					   *last_response_buf;
 
 	int 								upstream_tcp_nodelay;
 	int 								downstream_tcp_nodelay;

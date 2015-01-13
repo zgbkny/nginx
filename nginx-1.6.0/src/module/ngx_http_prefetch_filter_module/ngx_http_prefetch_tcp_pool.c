@@ -2,7 +2,7 @@
 
 #define ngx_tcp_reuse_pool_size 40960000
 #define ngx_tcp_reuse_conns_init_size 10000
-#define INIT_CONNECTIONS 100
+#define INIT_CONNECTIONS 1000
 
 static ngx_int_t
 ngx_tcp_reuse_init_conn(ngx_log_t *log);
