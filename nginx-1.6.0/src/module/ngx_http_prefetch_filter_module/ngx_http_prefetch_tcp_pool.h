@@ -18,7 +18,7 @@ struct ngx_tcp_reuse_conn_s{
 
 };
 
-int ngx_tcp_reuse_pool_init(ngx_log_t *log);
+int ngx_http_prefetch_pool_init(ngx_log_t *log);
 
 ngx_socket_t ngx_http_prefetch_get_tcp_conn(ngx_log_t *log);
 

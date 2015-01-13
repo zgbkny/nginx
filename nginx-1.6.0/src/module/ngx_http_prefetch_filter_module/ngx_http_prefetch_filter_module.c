@@ -3,6 +3,7 @@
 #include <ngx_http.h>
 
 #include "ngx_http_prefetch_filter_handler.h"
+#include "ngx_http_prefetch_tcp_pool.h"
 
 #define PREFETCH_CONTENT_TYPE 	"text/"
 #define PREFETCH_FLAG 		0
@@ -25,6 +26,9 @@ ngx_http_valid_url(u_char *url, ngx_log_t *log);
 
 static ngx_int_t
 ngx_http_prefetch_filter_init(ngx_conf_t *cf);
+
+static ngx_int_t
+ngx_http_prefetch_filter_init_process(ngx_cycle_t *cycle);
 
 static ngx_int_t
 ngx_http_prefetch_header_filter(ngx_http_request_t *r);
@@ -67,7 +71,7 @@ static ngx_command_t ngx_http_prefetch_filter_commands[] = {
 
 static ngx_http_module_t ngx_http_prefetch_filter_module_ctx = {
 	NULL,				 						/* preconfiguration */
-	ngx_http_prefetch_filter_init, 							/* postconfiguration */
+	ngx_http_prefetch_filter_init, 				/* postconfiguration */
 
 	NULL, 										/* create main configuration */
 	NULL, 										/* init main configuration */
@@ -85,7 +89,7 @@ ngx_module_t ngx_http_prefetch_filter_module = {
 	NGX_HTTP_MODULE,								/* module type */
 	NULL,										/* init master */
 	NULL,										/* init module */
-	NULL,										/* init process */
+	ngx_http_prefetch_filter_init_process,		/* init process */
 	NULL,										/* init thread */
 	NULL,										/* exit thread */
 	NULL,										/* exit process */
@@ -430,15 +434,21 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 static char * 
 ngx_http_prefetch(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-
+	
+	
 	return NGX_CONF_OK;
 }
 
+static ngx_int_t
+ngx_http_prefetch_filter_init_process(ngx_cycle_t *cycle)
+{
+	ngx_http_prefetch_pool_init(cycle->log);
+	return NGX_OK;
+}
 
 static ngx_int_t
 ngx_http_prefetch_filter_init(ngx_conf_t *cf)
 {
-	printf("prefetch_filter_init\n");
 	/* insert header handler to the head of the filter handlers */
 	ngx_http_next_header_filter = ngx_http_top_header_filter;
 	ngx_http_top_header_filter = ngx_http_prefetch_header_filter;
@@ -446,7 +456,7 @@ ngx_http_prefetch_filter_init(ngx_conf_t *cf)
 	/* insert body handler to the head of the filter handlers */
 	ngx_http_next_body_filter = ngx_http_top_body_filter;
 	ngx_http_top_body_filter = ngx_http_prefetch_body_filter;
-
+	
 	return NGX_OK;
 }
 

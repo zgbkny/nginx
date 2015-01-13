@@ -4,6 +4,9 @@
 #define ngx_tcp_reuse_conns_init_size 10000
 #define INIT_CONNECTIONS 1000
 
+static ngx_int_t
+ngx_tcp_reuse_init_conn(ngx_log_t *log);
+
 static ngx_pool_t       *ngx_reuse_pool;
 
 static ngx_array_t       conns;
@@ -15,10 +18,45 @@ static ngx_queue_t       active_conns;
 void
 ngx_http_prefetch_tcp_pool_event_handler(ngx_event_t *ev)
 {
-    // add conn to pool
+    ngx_connection_t            *c;
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_prefetch_tcp_pool_event_handler");
+    c = ev->data;
+    if (ev == c->write) {
+        // add conn to pool
+        if (ngx_http_prefetch_put_tcp_conn(c->fd, c->log) == NGX_OK) {
+         
+            if (c->read->timer_set) {
+                ngx_del_timer(c->read);
+            }
+
+            if (c->write->timer_set) {
+                ngx_del_timer(c->write);
+            }
+
+            if (ngx_del_conn) {
+                ngx_del_conn(c, NGX_DISABLE_EVENT);
+            } else {
+                if (c->read->active || c->read->disabled) {
+                    ngx_del_event(c->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+                }
+
+                if (c->write->active || c->write->disabled) {
+                    ngx_del_event(c->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
+                }
+            }
+            c->fd = -1;
+            ngx_reusable_connection(c, 0);
+            ngx_free_connection(c);
+            c = NULL;
+        } else {
+            ngx_close_connection(c);
+        }
+    } else {
+        ngx_close_connection(c);
+    }
 }
 
-ngx_int_t
+static ngx_int_t
 ngx_tcp_reuse_init_conn(ngx_log_t *log)
 {
     int                      rc;
@@ -48,25 +86,28 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
 
     s = ngx_socket(sockaddr->sa_family, SOCK_STREAM, 0);
 
-    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, u->log, 0, "socket %d", s);
+    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, log, 0, "socket %d", s);
     if (s == (ngx_socket_t) -1) {
         return NGX_ERROR;
     }   
+    printf("here 1\n");
 
     c = ngx_get_connection(s, log);
+    printf("here\n");
+    
     if (c == NULL) {
         return NGX_ERROR;
     }
 
     if (ngx_nonblocking(s) == -1) {
-        ngx_log_error(NGX_LOG_ALERT, u->log, ngx_socket_errno, ngx_blocking_n " failed");
+        ngx_log_error(NGX_LOG_ALERT, log, ngx_socket_errno, ngx_blocking_n " failed");
         goto failed;
     }
 
     rev = c->read;
     wev = c->write;
-    rev->log = u->log;
-    wev->log = u->log;
+    rev->log = log;
+    wev->log = log;
 
     if (ngx_add_conn) {
         if (ngx_add_conn(c) == NGX_ERROR) {
@@ -97,6 +138,8 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
             return NGX_ERROR;
         }   
     }
+    printf("here2 \n");
+
 
     // add callback here
     c->write->handler = ngx_http_prefetch_tcp_pool_event_handler;
@@ -132,7 +175,7 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
     }
 
     wev->ready = 1;
-    ngx_http_nd_upstream_wev_handler(u);
+    ngx_http_prefetch_tcp_pool_event_handler(wev);
         
     return NGX_OK;
 
@@ -141,7 +184,7 @@ failed:
     return NGX_ERROR;
 }
 
-int ngx_tcp_reuse_pool_init(ngx_log_t *log)
+int ngx_http_prefetch_pool_init(ngx_log_t *log)
 {
     size_t               i;
     ngx_reuse_pool = ngx_create_pool(ngx_tcp_reuse_pool_size, log);
@@ -162,7 +205,7 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_pool_init ok");
     // init some keep-alive conn to every client
     for (i = 0; i < ngx_tcp_reuse_conns_init_size; i++) {
-        ngx_tcp_reuse_init_conn();
+        ngx_tcp_reuse_init_conn(log);
     }
     return NGX_OK;
 }
