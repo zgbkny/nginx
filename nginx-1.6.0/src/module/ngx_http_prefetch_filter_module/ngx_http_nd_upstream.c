@@ -200,7 +200,8 @@ ngx_http_nd_upstream_push_response(ngx_http_nd_upstream_t *u)
 	ngx_connection_t 		*c;
 	ngx_buf_t 				*buffer;
 	ngx_int_t 				 event;
-
+	
+	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_push_response");
 
 	cl = u->request_bufs;
 	cl->next = NULL;

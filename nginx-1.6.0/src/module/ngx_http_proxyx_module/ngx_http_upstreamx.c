@@ -10,6 +10,7 @@
 #include <ngx_http.h>
 
 #include "ngx_http_tcp_reuse_pool.h"
+#include "ngx_http_push_handler.h"
 
 
 
@@ -626,6 +627,8 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
     ngx_int_t          rc;
     ngx_http_cache_t  *c;
 
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_cache");
+
     c = r->cache;
 
     if (c == NULL) {
@@ -768,7 +771,9 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
     r->cached = 0;
 
-    return NGX_DECLINED;
+    return ngx_http_push_handle(r, rc);
+
+//    return NGX_DECLINED;
 }
 
 
