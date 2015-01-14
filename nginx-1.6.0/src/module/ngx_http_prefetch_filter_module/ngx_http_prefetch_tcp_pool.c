@@ -15,6 +15,8 @@ static ngx_queue_t       empty_conns;
 
 static ngx_queue_t       active_conns;
 
+static size_t            count;
+
 void
 ngx_http_prefetch_tcp_pool_event_handler(ngx_event_t *ev)
 {
@@ -210,6 +212,9 @@ ngx_socket_t ngx_http_prefetch_get_tcp_conn(ngx_log_t *log)
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_get_active_conn");
     ngx_socket_t fd = -1;
     ngx_err_t    err;
+    ngx_int_t    i;
+    ngx_int_t    diff;
+
     u_char test[2];
     while (!ngx_queue_empty(&active_conns)) {
         ngx_queue_t *head_conn = ngx_queue_head(&active_conns);
@@ -247,7 +252,17 @@ ngx_socket_t ngx_http_prefetch_get_tcp_conn(ngx_log_t *log)
         }
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "fd:%d", fd);
 
+        count--;
+
     }
+
+    if (count < INIT_CONNECTIONS - 50) {
+        diff = INIT_CONNECTIONS - count;
+        for (i = 0; i < diff; i++) {
+            ngx_tcp_reuse_init_conn(log);
+        }
+    }
+
     return fd;
 }
 
@@ -267,6 +282,8 @@ int ngx_http_prefetch_put_tcp_conn(ngx_socket_t fd, ngx_log_t *log)
     }
     ngx_queue_insert_tail(&active_conns, &new_conn->q_elt);
     new_conn->fd = fd;
+
+    count++;
 
     return NGX_OK;
 }

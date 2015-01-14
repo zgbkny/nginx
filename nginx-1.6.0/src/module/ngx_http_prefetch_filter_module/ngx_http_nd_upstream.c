@@ -149,6 +149,7 @@ ngx_http_nd_upstream_write_to_downstream(ngx_http_nd_upstream_t *u)
 		// select poll 
 		event = NGX_LEVEL_EVENT;
 	}
+	
 	u->push_request = cl;
 	if (cl == NULL) {
 		// here we already send all data to client, we can cycle conn
@@ -223,6 +224,16 @@ ngx_http_nd_upstream_push_response(ngx_http_nd_upstream_t *u)
 	cl->next = u->response_bufs;
 	u->push_request = cl;
 
+	// debug
+	cl = u->push_request;
+	while (cl) {
+		buffer = cl->buf;
+		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "debug data:%s", buffer->start);
+		cl = cl->next;
+	}
+	// end debug
+
+
 	// now we can send push request to client
 	s = ngx_http_prefetch_get_tcp_conn(u->log);
 	if (s == (ngx_socket_t) -1) {
@@ -248,7 +259,6 @@ ngx_http_nd_upstream_push_response(ngx_http_nd_upstream_t *u)
 
 	if (ngx_event_flags & NGX_USE_CLEAR_EVENT) {
 		// kqueue
-
 		event = NGX_CLEAR_EVENT;
 	} else {
 		// select poll 
@@ -352,12 +362,10 @@ ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 		return;
 	}
 
-	
-
-
 	for ( ; ; ) {
 		
-		if (u->response_bufs == NULL || ngx_buf_size(u->last_response_buf->buf) == 0) {
+
+		if (u->response_bufs == NULL || u->last_response_buf->buf->end - u->last_response_buf->buf->last == 0) {
 		
 			buffer = ngx_create_temp_buf(u->pool, ND_UPSTREAM_BUFFER_SIZE);
 			if (buffer == NULL) {
@@ -377,6 +385,7 @@ ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 				u->response_bufs = cl;
 			} else {
 				u->last_response_buf->next = cl;
+				u->last_response_buf = cl;
 			}
 		} else {
 			buffer = u->last_response_buf->buf;
@@ -384,7 +393,7 @@ ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 
 		n = ngx_unix_recv(c, buffer->last, buffer->end - buffer->last);
 		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_rev_handler:%d", n);
-		if (n == NGX_AGAIN) {
+		if (n == NGX_AGAIN || n == -1) {
 			if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
 				ngx_http_nd_upstream_finalize(u, NGX_ERROR);
 				return;
@@ -392,19 +401,18 @@ ngx_http_nd_upstream_rev_handler(ngx_http_nd_upstream_t *u)
 			return;
 		}			
 		if (n == 0) {
+			
+
 			// here we start to push response to client
 			if (ngx_http_nd_upstream_push_response(u) != NGX_OK) {
 				ngx_http_nd_upstream_finalize(u, NGX_ERROR);
 			}
 			return;
 		}
-		if (n == NGX_ERROR) {
-			ngx_http_nd_upstream_finalize(u, NGX_OK);
-			return;
-		}
+
 		buffer->last += n;
 		u->response_lens += n;
-		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_rev_handler:%s", u->buffer.pos);
+		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_rev_handler:%s", buffer->pos);
 	}
 
 }
