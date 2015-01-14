@@ -13,6 +13,8 @@ ngx_http_push_handle(ngx_http_request_t *r, ngx_int_t rc)
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle uri:%s", r->uri.data);
 
     if (r->request_body) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle:");
+
         cl  = r->request_body->bufs;
         if (cl == NULL) {
             goto next;
@@ -22,7 +24,7 @@ ngx_http_push_handle(ngx_http_request_t *r, ngx_int_t rc)
             goto next;
         } 
 
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle:%s", buffer->pos);
+        
 
     } else {
         goto next;
