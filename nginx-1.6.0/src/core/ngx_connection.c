@@ -897,7 +897,7 @@ void
 ngx_free_connection(ngx_connection_t *c)
 {
     /* ngx_mutex_lock */
-
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, ngx_cycle->log, 0, "free connection:%d", c);
     c->data = ngx_cycle->free_connections;
     ngx_cycle->free_connections = c;
     ngx_cycle->free_connection_n++;

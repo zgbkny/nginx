@@ -156,11 +156,11 @@ ngx_http_nd_upstream_write_to_downstream(ngx_http_nd_upstream_t *u)
 		if (ngx_http_prefetch_put_tcp_conn(u->conn->fd, u->log) == NGX_OK) {
      
             if (u->conn->read->timer_set) {
-                ngx_del_timer(u->peer.connection->read);
+                ngx_del_timer(u->conn->read);
             }
 
             if (u->conn->write->timer_set) {
-                ngx_del_timer(u->peer.connection->write);
+                ngx_del_timer(u->conn->write);
             }
 
             if (ngx_del_conn) {
@@ -176,10 +176,11 @@ ngx_http_nd_upstream_write_to_downstream(ngx_http_nd_upstream_t *u)
                 }
             }
             u->conn->fd = -1;
-            ngx_reusable_connection(u->peer.connection, 0);
-            ngx_free_connection(u->peer.connection);
+            ngx_reusable_connection(u->conn, 0);
+            ngx_free_connection(u->conn);
             u->conn = NULL;
         } 
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, u->log, 0, "ngx_http_nd_upstream_write_to_downstream u->conn:%d", u->conn);
 		ngx_http_nd_upstream_finalize(u, NGX_OK);
 	} else {
 		u->write_downstream_event_handler = ngx_http_nd_upstream_write_to_downstream;
@@ -424,6 +425,8 @@ ngx_http_nd_upstream_finalize(ngx_http_nd_upstream_t *u, ngx_int_t rc)
 
 	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_finalize rc:%d", rc);
 	if (u->peer.connection) {
+		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_finalize peer");
+
 		if (u->peer.connection->pool) {
 			ngx_destroy_pool(u->peer.connection->pool);
 		}		
@@ -431,6 +434,7 @@ ngx_http_nd_upstream_finalize(ngx_http_nd_upstream_t *u, ngx_int_t rc)
 	} 	
 	u->peer.connection = NULL;
 	if (u->conn) {
+		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_finalize conn");
 
 		if (u->conn->pool) {
 			ngx_destroy_pool(u->conn->pool);

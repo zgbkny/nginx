@@ -137,6 +137,7 @@ ngx_http_prefetch_handle_url(ngx_int_t type, u_char *url, size_t len, ngx_http_r
 	nd_u->socklen = sizeof(struct sockaddr_in);	
 	// init nd_upstream to send request
 	ngx_http_nd_upstream_init(nd_u);	
+	//ngx_http_nd_upstream_finalize(nd_u, NGX_OK);
 }
 
 

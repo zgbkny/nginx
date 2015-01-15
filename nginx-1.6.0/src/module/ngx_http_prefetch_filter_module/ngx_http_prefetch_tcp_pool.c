@@ -2,7 +2,7 @@
 
 #define ngx_tcp_reuse_pool_size 40960000
 #define ngx_tcp_reuse_conns_init_size 10000
-#define INIT_CONNECTIONS 1000
+#define INIT_CONNECTIONS 300
 
 static ngx_int_t
 ngx_tcp_reuse_init_conn(ngx_log_t *log);
@@ -16,15 +16,20 @@ static ngx_queue_t       empty_conns;
 static ngx_queue_t       active_conns;
 
 static size_t            count;
+static size_t            temp_count;
 
 void
 ngx_http_prefetch_tcp_pool_event_handler(ngx_event_t *ev)
 {
+    temp_count--;
+
     ngx_connection_t            *c;
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_prefetch_tcp_pool_event_handler");
     c = ev->data;
     if (ev == c->write) {
         // add conn to pool
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_prefetch_tcp_pool_event_handler add");
+
         if (ngx_http_prefetch_put_tcp_conn(c->fd, c->log) == NGX_OK) {
          
             if (c->read->timer_set) {
@@ -163,6 +168,8 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
     if (rc == -1) {
         ngx_add_timer(c->write, 60000);
 
+        temp_count++;
+
         // NGX_EINPROGRESS
         if (ngx_add_event(wev, NGX_WRITE_EVENT, event) != NGX_OK) {
             goto failed;
@@ -209,7 +216,7 @@ int ngx_http_prefetch_pool_init(ngx_log_t *log)
 
 ngx_socket_t ngx_http_prefetch_get_tcp_conn(ngx_log_t *log)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_get_active_conn");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "http prefetch conn pool get");
     ngx_socket_t fd = -1;
     ngx_err_t    err;
     ngx_int_t    i;
@@ -217,6 +224,7 @@ ngx_socket_t ngx_http_prefetch_get_tcp_conn(ngx_log_t *log)
 
     u_char test[2];
     while (!ngx_queue_empty(&active_conns)) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "http prefetch conn pool not empty");
         ngx_queue_t *head_conn = ngx_queue_head(&active_conns);
         ngx_tcp_reuse_conn_t *active_conn = ngx_queue_data(head_conn, ngx_tcp_reuse_conn_t, q_elt);
         fd = active_conn->fd;
@@ -256,8 +264,8 @@ ngx_socket_t ngx_http_prefetch_get_tcp_conn(ngx_log_t *log)
 
     }
 
-    if (count < INIT_CONNECTIONS - 50) {
-        diff = INIT_CONNECTIONS - count;
+    if (count + temp_count < INIT_CONNECTIONS - 50) {
+        diff = INIT_CONNECTIONS - count - temp_count;
         for (i = 0; i < diff; i++) {
             ngx_tcp_reuse_init_conn(log);
         }
@@ -268,6 +276,8 @@ ngx_socket_t ngx_http_prefetch_get_tcp_conn(ngx_log_t *log)
 
 int ngx_http_prefetch_put_tcp_conn(ngx_socket_t fd, ngx_log_t *log)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "http prefetch conn pool put");
+
     ngx_tcp_reuse_conn_t *new_conn = NULL;
     ngx_queue_t *head = NULL;
     if (ngx_queue_empty(&empty_conns)) {

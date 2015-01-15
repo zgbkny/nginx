@@ -15,6 +15,11 @@ ngx_http_push_handle(ngx_http_request_t *r, ngx_int_t rc)
     if (r->request_body) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle:");
 
+        if (r->request_body->temp_file) {
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle file:%s", r->request_body->temp_file->file.name.data);
+
+        }
+
         cl  = r->request_body->bufs;
         if (cl == NULL) {
             goto next;
