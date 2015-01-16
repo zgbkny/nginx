@@ -695,6 +695,7 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http upstream cache: %i", rc);
+
     switch (rc) {
 
     case NGX_HTTP_CACHE_UPDATING:

@@ -3,13 +3,17 @@
 #include <ngx_http.h>
 
 #include "ngx_http_prefetch_filter_handler.h"
+#include "ngx_http_prefetch_gzip_handler.h"
 #include "ngx_http_prefetch_tcp_pool.h"
 
 #define PREFETCH_CONTENT_TYPE 	"text/"
-#define PREFETCH_FLAG 		0
-#define PREFETCH_NOT_FLAG 	1
-#define GZIP_FLAG 		0
-#define GZIP_NOT_FLAG		1
+#define PREFETCH_FLAG 			0
+#define PREFETCH_NOT_FLAG 		1
+#define GZIP_FLAG 				0
+#define GZIP_NOT_FLAG			1
+
+#define IN_BUF_SIZE    			(500 * 1024)
+#define OUT_BUF_SIZE   			(1024 * 1024)
 
 
 static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
@@ -49,8 +53,10 @@ static char*
 ngx_http_prefetch_merge_conf(ngx_conf_t *cf, void *parent, void *child);
 
 typedef struct {
-	ngx_flag_t 	flag;
-	ngx_flag_t	gzip_flag;
+	ngx_flag_t 		flag;
+	ngx_flag_t		gzip_flag;
+	ngx_buf_t  	   *in_buf;
+	ngx_buf_t 	   *out_buf;
 } ngx_http_prefetch_ctx_t;
 
 typedef struct {
@@ -147,8 +153,10 @@ static ngx_int_t
 ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter");
-	ngx_http_upstream_t			*u;
+	ngx_http_upstream_t				*u;
 	ngx_http_prefetch_ctx_t			*ctx;
+
+	ngx_str_t 						 gzip_type = ngx_string("gzip");
 
 	u = r->upstream;
 
@@ -167,6 +175,9 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 		
 		ctx->flag = PREFETCH_NOT_FLAG;
 		ctx->gzip_flag = GZIP_NOT_FLAG;
+		ctx->in_buf = ngx_create_temp_buf(r->pool, IN_BUF_SIZE);
+		ctx->out_buf = ngx_create_temp_buf(r->pool, OUT_BUF_SIZE);
+
 		/*now we need to check if we should analysis the response*/ 
 		if (u->headers_in.content_type != NULL &&
 		   	u->headers_in.content_type->value.data != NULL &&
@@ -176,7 +187,15 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 			ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter content_type:%s", 
 					u->headers_in.content_type->value.data);
 			ctx->flag = PREFETCH_FLAG;
-		}		
+		}	
+#if (NGX_HTTP_GZIP)
+		if (u->headers_in.content_encoding != NULL &&
+			u->headers_in.content_encoding->value.data != NULL &&
+			kmp_search(u->headers_in.content_encoding->value.data, u->headers_in.content_encoding->value.len, gzip_type.data, gzip_type.len) != -1) {
+			ctx->gzip_flag = GZIP_FLAG;
+		}
+#endif
+
 		ngx_http_set_ctx(r, ctx, ngx_http_prefetch_filter_module);
 	}
 
@@ -392,6 +411,9 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 	ngx_buf_t						*temp_buf;
 	ngx_time_t 						*temp_time;
 	ngx_time_t 						*end_time;
+	uLong    						 in_len;
+	uLong   						 len;
+	int 							 ret;
 
 	ngx_time_update();
 	temp_time = ngx_timeofday();
@@ -399,16 +421,46 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
 	ctx = ngx_http_get_module_ctx(r, ngx_http_prefetch_filter_module);
 	if (ctx == NULL) {
-	
 		return ngx_http_next_body_filter(r, in);
 	//	return NGX_ERROR;
 	}
+
 
 	if (ctx->flag == PREFETCH_FLAG) {
 		
 
 		/*1: for some gzip or some other type content, we need to process data in buffer first
 				(for example: un gzip the gzip data), then to analysis*/
+		if (ctx->gzip_flag == GZIP_FLAG) {
+			ngx_http_prefetch_gzip_test();
+			if (ctx->in_buf != NULL && ctx->out_buf != NULL) {
+				while (normal_chain) {
+					buf = normal_chain->buf;
+
+					if (buf->last - buf->pos < ctx->in_buf->end - ctx->in_buf->last) {
+						ngx_memcpy(ctx->in_buf->last, buf->pos, buf->last - buf->pos);
+						ctx->in_buf->last += (buf->last - buf->pos);
+					}
+					normal_chain = normal_chain->next;
+				}
+				in_len = ctx->in_buf->last - ctx->in_buf->pos;
+				ret = ngx_http_prefetch_gzip_decompress((Byte *)ctx->in_buf->pos, in_len, (Byte *)ctx->out_buf->last, &len);
+				ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip source:%d, %s", in_len, ctx->in_buf->pos);
+				
+				ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip result:%d", ret);
+				if (ret == 0) {
+					ctx->out_buf->last += len;
+				}
+
+				if (len >= in_len) {
+					ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip data:%d, %s", len, ctx->out_buf->last);
+				}
+				ngx_http_prefetch_filter_url(r, ctx->out_buf->pos, ctx->out_buf->last, r->connection->log);
+			}
+			
+			ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip");
+			return ngx_http_next_body_filter(r, in);
+		}
 		
 		
 		/*2: we already get normal data to analysis */
