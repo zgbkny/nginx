@@ -23,9 +23,17 @@ ngx_http_prefetch_tcp_pool_event_handler(ngx_event_t *ev)
 {
     temp_count--;
 
+
+
     ngx_connection_t            *c;
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_prefetch_tcp_pool_event_handler");
     c = ev->data;
+
+    if (ev->timedout) {
+        ngx_close_connection(c);
+        return;
+    }
+
     if (ev == c->write) {
         // add conn to pool
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_prefetch_tcp_pool_event_handler add");

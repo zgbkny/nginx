@@ -97,6 +97,8 @@ ngx_http_read_client_request_body(ngx_http_request_t *r,
         out.buf = r->header_in;
         out.next = NULL;
 
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http client request body preread data:%s", out.buf->pos);
+
         rc = ngx_http_request_body_filter(r, &out);
 
         if (rc != NGX_OK) {
@@ -310,6 +312,8 @@ ngx_http_do_read_client_request_body(ngx_http_request_t *r)
 
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
                            "http client request body recv %z", n);
+
+            ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "http client request body data:%s", rb->buf->pos);
 
             if (n == NGX_AGAIN) {
                 break;

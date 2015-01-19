@@ -111,12 +111,14 @@ ngx_http_prefetch_handle_url(ngx_int_t type, u_char *url, size_t len, ngx_http_r
 	ngx_http_nd_upstream_t 		*nd_u;
 	ngx_int_t 			 rc;	
 	
-
 	// first we need to create a nd upstream
-	nd_u = ngx_http_nd_upstream_create(r);
+	nd_u = ngx_http_nd_upstream_create();
 	if (nd_u == NULL) {
 		return;
 	}
+	
+
+
 	rc = ngx_http_nd_upstream_create_request(type, nd_u, url, len, r);
 	if (rc != NGX_OK) {
 		return;
@@ -136,6 +138,8 @@ ngx_http_prefetch_handle_url(ngx_int_t type, u_char *url, size_t len, ngx_http_r
 	nd_u->socklen = sizeof(struct sockaddr_in);	
 	// init nd_upstream to send request
 	ngx_http_nd_upstream_init(nd_u);	
+
+	// debug
 	//ngx_http_nd_upstream_finalize(nd_u, NGX_OK);
 }
 

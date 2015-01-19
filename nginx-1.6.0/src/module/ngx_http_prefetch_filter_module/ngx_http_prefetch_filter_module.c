@@ -13,7 +13,7 @@
 #define GZIP_NOT_FLAG			1
 
 #define IN_BUF_SIZE    			(500 * 1024)
-#define OUT_BUF_SIZE   			(1024 * 1024)
+#define OUT_BUF_SIZE   			(4096 * 1024)
 
 
 static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
@@ -162,9 +162,9 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 
 	
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter going check"); 
-//	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter before content_type:%s", 
-//			u->headers_in.content_type->value.data);
+
 	ctx = ngx_http_get_module_ctx(r, ngx_http_prefetch_filter_module);
+
 	if (ctx == NULL) {
 		ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_prefetch_ctx_t));
 		if (ctx == NULL) {
@@ -177,23 +177,27 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 		ctx->gzip_flag = GZIP_NOT_FLAG;
 		ctx->out_buf = NULL;
 		ctx->in_buf = NULL;
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter type check");
+
 		/*now we need to check if we should analysis the response*/ 
-		if (u->headers_in.content_type != NULL &&
+		if (u != NULL &&
+			u->headers_in.content_type != NULL &&
 		   	u->headers_in.content_type->value.data != NULL &&
 			ngx_strncmp((const char *)u->headers_in.content_type->value.data, 
 					PREFETCH_CONTENT_TYPE, strlen(PREFETCH_CONTENT_TYPE)) == 0) {
 
-			ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter content_type:%s", 
-					u->headers_in.content_type->value.data);
+			ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter content_type");
 			ctx->flag = PREFETCH_FLAG;
 			ctx->in_buf = ngx_create_temp_buf(r->pool, IN_BUF_SIZE);
-			if (ctx->out_buf == NULL) {
+			if (ctx->in_buf == NULL) {
 				ctx->flag = PREFETCH_NOT_FLAG;
 				ctx->gzip_flag = GZIP_NOT_FLAG;
 			}
 
+			ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter gzip check");
+
 #if (NGX_HTTP_GZIP)
-			if (ctx->flag != PREFETCH_NOT_FLAG&&
+			if (ctx->flag != PREFETCH_NOT_FLAG &&
 				u->headers_in.content_encoding != NULL &&
 				u->headers_in.content_encoding->value.data != NULL &&
 				kmp_search(u->headers_in.content_encoding->value.data, u->headers_in.content_encoding->value.len, gzip_type.data, gzip_type.len) != -1) {
@@ -207,11 +211,13 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 			}
 #endif
 		}	
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter type check over");
 
 
 		ngx_http_set_ctx(r, ctx, ngx_http_prefetch_filter_module);
 	}
 
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter end");
 	
 
 
@@ -317,16 +323,20 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, u_char *buf_start, u_char *b
 	start = 0;
 	end  = 0;
 	index = -1;
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch %s", buf_str);
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter need to prefetch ");
 	while (1) {
 		buf_str = buf_str + start;
 		if (buf_str > buf_end) break;
+
 		index = kmp_search(buf_str, buf_end - buf_str, http_str.data, http_str.len);
+
 		if (index != -1) {
-			ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter flag before http:%c", buf_str[index - 1]);
+			if (index - 1 >= 0) {
+				ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_prefetch_body_filter flag before http:%c", buf_str[index - 1]);
+			}
 
 
-			if (buf_str + index + http_str.len + 1 > buf_end) break;
+			if (buf_str + index > buf_end) break;
 			temp_str = buf_str;
 			buf_str = buf_str + index;
 			if (buf_str > buf_end) break;
@@ -336,14 +346,18 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, u_char *buf_start, u_char *b
 
 			start = 0;
 			end = -1;
-			if (temp_str[index - 1] == '\'') {
-				end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\'", 1); 
-			} else if (temp_str[index - 1] == '\"') {
+			if (index - 1 >= 0) {
+				if (temp_str[index - 1] == '\'') {
+					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\'", 1); 
+				} else if (temp_str[index - 1] == '\"') {
+					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\"", 1); 
+				} else if (temp_str[index - 1] == '(') {
+					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)")", 1); 
+				} 
+			} else {
 				end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\"", 1); 
-			} else if (temp_str[index - 1] == '(') {
-				end = kmp_search(buf_str, buf_end - buf_str, (u_char *)")", 1); 
-			} 
-			
+			}
+
 			if (end != -1) {
 
 				if (buf_str + end > buf_end || end > 1000) break;
@@ -382,6 +396,8 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 	uLong   						 len;
 	int 							 ret;
 
+
+
 	ngx_time_update();
 	temp_time = ngx_timeofday();
 	normal_chain = in;
@@ -392,10 +408,11 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 	//	return NGX_ERROR;
 	}
 
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_body_filter flag:%d, gzip_flag:%d", ctx->flag, ctx->gzip_flag);
+
 
 	if (ctx->flag == PREFETCH_FLAG) {
 		
-
 		/*1: for some gzip or some other type content, we need to process data in buffer first
 				(for example: un gzip the gzip data), then to analysis*/
 		if (ctx->gzip_flag == GZIP_FLAG) {

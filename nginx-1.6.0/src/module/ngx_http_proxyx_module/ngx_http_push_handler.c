@@ -12,15 +12,46 @@ ngx_http_push_handle(ngx_http_request_t *r, ngx_int_t rc)
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle uri:%s", r->uri.data);
 
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle request_body_in_file_only:%d", r->request_body_in_file_only);
+
+
+    if (r->headers_in.content_length) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle content_length:%s", r->headers_in.content_length->value.data);
+    }
+
+
+
     if (r->request_body) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle:");
+
+  /*      cl = r->request_body->bufs;
+        while (cl) {
+            buffer = cl->buf;
+            if (buffer) {
+                ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle data:%s", buffer->pos);
+
+            }
+
+            cl = cl->next;
+        }
+*/
+
 
         if (r->request_body->temp_file) {
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle file:%s", r->request_body->temp_file->file.name.data);
 
+        } else {
+            cl = r->request_body->bufs;
+            while (cl) {
+                buffer = cl->buf;
+                if (buffer) {
+                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_push_handle data:%s", buffer->pos);
+                }
+                cl = cl->next;
+            }
         }
 
-        cl  = r->request_body->bufs;
+        cl = r->request_body->bufs;
         if (cl == NULL) {
             goto next;
         }

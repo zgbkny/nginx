@@ -184,7 +184,7 @@ ngx_http_nd_upstream_write_to_downstream(ngx_http_nd_upstream_t *u)
 		ngx_http_nd_upstream_finalize(u, NGX_OK);
 	} else {
 		u->write_downstream_event_handler = ngx_http_nd_upstream_write_to_downstream;
-		if (ngx_add_event(c->write, NGX_READ_EVENT, event) != NGX_OK) {
+		if (ngx_add_event(c->write, NGX_WRITE_EVENT, event) != NGX_OK) {
 			return;
 		}
 		ngx_add_timer(c->write, u->timeout);
@@ -273,7 +273,7 @@ ngx_http_nd_upstream_push_response(ngx_http_nd_upstream_t *u)
 	u->write_downstream_event_handler = ngx_http_nd_upstream_write_to_downstream;
 
 	if (!c->write->ready) {
-		if (ngx_add_event(c->write, NGX_READ_EVENT, event) != NGX_OK) {
+		if (ngx_add_event(c->write, NGX_WRITE_EVENT, event) != NGX_OK) {
 			return NGX_ERROR;
 		}
 		ngx_add_timer(c->write, u->timeout);
@@ -449,12 +449,12 @@ ngx_http_nd_upstream_finalize(ngx_http_nd_upstream_t *u, ngx_int_t rc)
 }
 
 ngx_http_nd_upstream_t *
-ngx_http_nd_upstream_create(ngx_http_request_t *r)
+ngx_http_nd_upstream_create()
 {
 	ngx_pool_t			*pool;
 	ngx_http_nd_upstream_t 		*u;
 
-	pool = ngx_create_pool(ND_UPSTREAM_POOL_SIZE, r->connection->log);
+	pool = ngx_create_pool(ND_UPSTREAM_POOL_SIZE, ngx_cycle->log);
 	if (pool == NULL) {
 		return NULL;
 	}
@@ -462,7 +462,7 @@ ngx_http_nd_upstream_create(ngx_http_request_t *r)
 	if (u == NULL) {
 		return NULL;
 	}
-	u->log = r->connection->log;	
+	u->log = ngx_cycle->log;	
 	u->pool = pool;
 	
 	u->buffer.start = ngx_palloc(u->pool, ND_UPSTREAM_BUFFER_SIZE);
