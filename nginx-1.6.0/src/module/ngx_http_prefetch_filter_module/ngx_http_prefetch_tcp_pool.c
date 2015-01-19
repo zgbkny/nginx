@@ -79,7 +79,7 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
 
     // set address
     static struct sockaddr_in sock_addr;
-    struct hostent *p_host = gethostbyname((char *)"192.168.0.166");
+    struct hostent *p_host = gethostbyname((char *)"192.168.0.172");
     if (p_host == NULL) {
         return NGX_ERROR;
     }
@@ -150,12 +150,6 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
     c->read->handler = ngx_http_prefetch_tcp_pool_event_handler;
     c->data = NULL;
 
-    if (ngx_add_conn) {
-        if (rc == -1) {
-            return NGX_ERROR;
-        }
-        wev->ready = 1;
-    }
     if (ngx_event_flags & NGX_USE_CLEAR_EVENT) {
         // kqueue
 

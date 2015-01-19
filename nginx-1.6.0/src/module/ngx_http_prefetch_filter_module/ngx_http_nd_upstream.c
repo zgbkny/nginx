@@ -304,7 +304,6 @@ ngx_http_nd_upstream_wev_handler(ngx_http_nd_upstream_t *u)
 	}
 
 	rc = ngx_http_nd_upstream_send_request(u);
-	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_wev_handler:%d", rc);
 	
 	if (rc == NGX_ERROR) {
 		ngx_http_nd_upstream_finalize(u, NGX_ERROR);
@@ -331,14 +330,12 @@ ngx_http_nd_upstream_wev_handler(ngx_http_nd_upstream_t *u)
 		return;
 	} else {
 	
-		ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_wev_handler set read");
 		if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
 			ngx_http_nd_upstream_finalize(u, NGX_ERROR);
 			return;
 		}
 	}
 
-	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_wev_handler check");
 	// clear write callback
 	u->write_event_handler = ngx_http_nd_upstream_dummy_handler;
 	if (ngx_handle_write_event(c->write, 0) != NGX_OK) {
@@ -568,13 +565,6 @@ ngx_http_nd_upstream_init(ngx_http_nd_upstream_t *u)
 	c->data = u;
 		
 
-
-	if (ngx_add_conn) {
-		if (rc == -1) {
-			return NGX_AGAIN;
-		}
-		wev->ready = 1;
-	}
 	if (ngx_event_flags & NGX_USE_CLEAR_EVENT) {
 		// kqueue
 
@@ -584,9 +574,6 @@ ngx_http_nd_upstream_init(ngx_http_nd_upstream_t *u)
 		event = NGX_LEVEL_EVENT;
 	}
 
-	if (ngx_add_event(rev, NGX_READ_EVENT, event) != NGX_OK) {
-		goto failed;
-	}
 	if (rc == -1) {
 		ngx_add_timer(c->write, u->timeout);
 
