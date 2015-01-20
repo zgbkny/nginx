@@ -23,7 +23,7 @@ static void
 get_next(u_char *p, ngx_int_t next[], ngx_int_t p_len); 
 
 static ngx_int_t 
-kmp_search(u_char *s, ngx_int_t s_len, u_char *p, ngx_int_t p_len);
+kmp_search(u_char *s, ngx_int_t s_len, u_char *p, ngx_int_t p_len, ngx_log_t *log);
 
 static ngx_int_t 
 ngx_http_valid_url(u_char *url, ngx_log_t *log); 
@@ -122,7 +122,7 @@ get_next(u_char *p, ngx_int_t next[], ngx_int_t p_len)
 }
 
 static ngx_int_t 
-kmp_search(u_char *s, ngx_int_t s_len, u_char *p, ngx_int_t p_len)
+kmp_search(u_char *s, ngx_int_t s_len, u_char *p, ngx_int_t p_len, ngx_log_t *log)
 {
 	if (s_len < 1) return -1;
 	if (p_len < 1) return -1;
@@ -132,6 +132,8 @@ kmp_search(u_char *s, ngx_int_t s_len, u_char *p, ngx_int_t p_len)
 	ngx_int_t		 next[s_len + 1];
 	ngx_memzero(next, s_len + 1);
 	get_next(p, next, p_len);
+
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "kmp before while");
 
 	while (i < s_len && j < p_len) {
 		// if j == -1 or S[i] == P[j], then i++, j++
@@ -200,7 +202,7 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 			if (ctx->flag != PREFETCH_NOT_FLAG &&
 				u->headers_in.content_encoding != NULL &&
 				u->headers_in.content_encoding->value.data != NULL &&
-				kmp_search(u->headers_in.content_encoding->value.data, u->headers_in.content_encoding->value.len, gzip_type.data, gzip_type.len) != -1) {
+				kmp_search(u->headers_in.content_encoding->value.data, u->headers_in.content_encoding->value.len, gzip_type.data, gzip_type.len, r->connection->log) != -1) {
 				ctx->gzip_flag = GZIP_FLAG;
 				ctx->out_buf = ngx_create_temp_buf(r->pool, OUT_BUF_SIZE);
 				if (ctx->out_buf == NULL) {
@@ -260,40 +262,40 @@ ngx_http_valid_url(u_char *url, ngx_log_t *log)
 	len = strlen((char *)url);
 	
 	// check if there is a dot 
-	if (kmp_search(url, len, dot_str.data, dot_str.len) == -1) {
+	if (kmp_search(url, len, dot_str.data, dot_str.len, log) == -1) {
 		goto error;
 	}
 
 	// check if this is a gif
-	if (kmp_search(url, len, gif_str.data, gif_str.len) != -1) {
+	if (kmp_search(url, len, gif_str.data, gif_str.len, log) != -1) {
 		return NGX_GIF_RETURN;
 	}
 	// check if this is a png
-	if (kmp_search(url, len, png_str.data, png_str.len) != -1) {
+	if (kmp_search(url, len, png_str.data, png_str.len, log) != -1) {
 		return NGX_PNG_RETURN;
 	}
 	// check if this is a jpg
-	if (kmp_search(url, len, jpg_str.data, jpg_str.len) != -1) {
+	if (kmp_search(url, len, jpg_str.data, jpg_str.len, log) != -1) {
 		return NGX_JPG_RETURN;
 	}
 	// check if this is a css
-	if (kmp_search(url, len, css_str.data, css_str.len) != -1) {
+	if (kmp_search(url, len, css_str.data, css_str.len, log) != -1) {
 		return NGX_CSS_RETURN;
 	}
 	// check if this is a js
-	if (kmp_search(url, len, js_str.data, js_str.len) != -1) {
+	if (kmp_search(url, len, js_str.data, js_str.len, log) != -1) {
 		return NGX_JS_RETURN;
 	}
 	// check if this is a flv
-	if (kmp_search(url, len, flv_str.data, flv_str.len) != -1) {
+	if (kmp_search(url, len, flv_str.data, flv_str.len, log) != -1) {
 		return NGX_FLV_RETURN;
 	}
 	// check if this is a ico
-	if (kmp_search(url, len, ico_str.data, ico_str.len) != -1) {
+	if (kmp_search(url, len, ico_str.data, ico_str.len, log) != -1) {
 		return NGX_ICO_RETURN;
 	}
 	// check if this is a swf
-	if (kmp_search(url, len, swf_str.data, swf_str.len) != -1) {
+	if (kmp_search(url, len, swf_str.data, swf_str.len, log) != -1) {
 		return NGX_SWF_RETURN;
 	}
 
@@ -328,7 +330,7 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, u_char *buf_start, u_char *b
 		buf_str = buf_str + start;
 		if (buf_str > buf_end) break;
 
-		index = kmp_search(buf_str, buf_end - buf_str, http_str.data, http_str.len);
+		index = kmp_search(buf_str, buf_end - buf_str, http_str.data, http_str.len, log);
 
 		if (index != -1) {
 			if (index - 1 >= 0) {
@@ -348,14 +350,14 @@ ngx_http_prefetch_filter_url(ngx_http_request_t *r, u_char *buf_start, u_char *b
 			end = -1;
 			if (index - 1 >= 0) {
 				if (temp_str[index - 1] == '\'') {
-					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\'", 1); 
+					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\'", 1, log); 
 				} else if (temp_str[index - 1] == '\"') {
-					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\"", 1); 
+					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\"", 1, log); 
 				} else if (temp_str[index - 1] == '(') {
-					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)")", 1); 
+					end = kmp_search(buf_str, buf_end - buf_str, (u_char *)")", 1, log); 
 				} 
 			} else {
-				end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\"", 1); 
+				end = kmp_search(buf_str, buf_end - buf_str, (u_char *)"\"", 1, log); 
 			}
 
 			if (end != -1) {
