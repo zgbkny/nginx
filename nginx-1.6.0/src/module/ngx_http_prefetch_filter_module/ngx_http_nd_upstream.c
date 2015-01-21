@@ -202,6 +202,7 @@ ngx_http_nd_upstream_push_response(ngx_http_nd_upstream_t *u)
 	ngx_connection_t 		*c;
 	ngx_buf_t 				*buffer;
 	ngx_int_t 				 event;
+	int 					 tcp_nodelay;
 	
 	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_push_response");
 
@@ -249,6 +250,12 @@ ngx_http_nd_upstream_push_response(ngx_http_nd_upstream_t *u)
 		c->write->ready = 1;
 		c->read->ready = 1;
 	}
+
+	tcp_nodelay = 1;
+	if (u->downstream_tcp_nodelay == NGX_TCP_NODELAY_UNSET) {
+		setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, (const void *)&tcp_nodelay, sizeof(int) == -1);
+	}
+
 	u->conn = c;
 	if (ngx_add_conn) {
 		if (ngx_add_conn(c) == NGX_ERROR) {
@@ -295,12 +302,19 @@ ngx_http_nd_upstream_wev_handler(ngx_http_nd_upstream_t *u)
 {
 	ngx_log_debug(NGX_LOG_DEBUG_EVENT, u->log, 0, "ngx_http_nd_upstream_wev_handler");
 	ngx_connection_t	*c;
-	ngx_int_t		 rc;	
+	ngx_int_t		 rc;
+
+	int 				 tcp_nodelay;	
 	c = u->peer.connection;
 
 	if (c->write->timedout) {
 		ngx_http_nd_upstream_finalize(u, NGX_ERROR);
 		return;
+	}
+
+	tcp_nodelay = 1;
+	if (u->upstream_tcp_nodelay == NGX_TCP_NODELAY_UNSET) {
+		setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, (const void *)&tcp_nodelay, sizeof(int) == -1);
 	}
 
 	rc = ngx_http_nd_upstream_send_request(u);
