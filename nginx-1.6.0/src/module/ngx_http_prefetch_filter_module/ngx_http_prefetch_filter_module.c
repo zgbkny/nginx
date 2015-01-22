@@ -129,8 +129,8 @@ kmp_search(u_char *s, ngx_int_t s_len, u_char *p, ngx_int_t p_len, ngx_log_t *lo
 	if (s_len < p_len) return -1;
 	ngx_int_t		 i = 0;
 	ngx_int_t		 j = 0;
-	ngx_int_t		 next[s_len + 1];
-	ngx_memzero(next, s_len + 1);
+	ngx_int_t		 next[p_len + 1];
+	ngx_memzero(next, p_len + 1);
 	get_next(p, next, p_len);
 
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "kmp before while");

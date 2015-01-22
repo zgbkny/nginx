@@ -111,7 +111,6 @@ ngx_http_push_handle(ngx_http_request_t *r, ngx_int_t rc)
                 } else {
                     
 
-
                     for (i = 0; i < buffer->last - buffer->pos; i++) {
                         if (ngx_strncmp(buffer->pos + i, flag, 4) == 0) {
                             goto find;
