@@ -702,6 +702,8 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
 
 #ifdef TCP_DEFER_ACCEPT
 
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, cycle->log, 0, "TCP_DEFER_ACCEPT check");
+
         if (ls[i].add_deferred || ls[i].delete_deferred) {
 
             if (ls[i].add_deferred) {

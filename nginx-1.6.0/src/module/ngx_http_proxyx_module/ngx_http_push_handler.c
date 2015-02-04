@@ -74,6 +74,7 @@ ngx_create_file(ngx_file_t *file, ngx_path_t *path, ngx_pool_t *pool,
 ngx_int_t 
 ngx_http_push_handle(ngx_http_request_t *r, ngx_int_t rc)
 {
+    //return rc;
     ngx_chain_t                         *cl;
     ngx_buf_t                           *buffer = NULL;
     ngx_http_file_cache_header_t        *h;

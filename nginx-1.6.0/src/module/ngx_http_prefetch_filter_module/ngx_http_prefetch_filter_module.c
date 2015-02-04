@@ -447,6 +447,9 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 		}
 		
 		normal_chain = in;
+		ctx->in_buf->last = ctx->in_buf->start;
+		ctx->in_buf->pos = ctx->in_buf->start;
+
 		while (normal_chain) {
 			buf = normal_chain->buf;
 

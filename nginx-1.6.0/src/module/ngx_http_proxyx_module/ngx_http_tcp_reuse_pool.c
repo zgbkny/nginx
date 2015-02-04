@@ -44,7 +44,7 @@ ngx_http_tcp_reuse_pool_event_handler(ngx_event_t *ev)
 
     if (ev == c->write) {
         // add conn to pool
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_tcp_reuse_pool_event_handler add");
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_tcp_reuse_pool_event_handler add %d", errno);
 
         if (ngx_tcp_reuse_put_active_conn(c->fd, c->log) == NGX_OK) {
          
@@ -92,7 +92,7 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
     socklen_t                socklen;
     struct sockaddr         *sockaddr;
 
-
+   
     // set address
     static struct sockaddr_in sock_addr;
     struct hostent *p_host = gethostbyname((char *)"192.168.0.200");
@@ -201,7 +201,7 @@ static void ngx_tcp_pool_delay_timeout_handler(ngx_event_t *ev)
 {  
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_tcp_pool_delay_timeout_handler");
     ngx_int_t 		fd;
-    	
+	
     fd = ngx_tcp_reuse_get_active_conn(ev->log);
     if (fd != -1) {
     	ngx_tcp_reuse_put_active_conn(fd, ev->log);
@@ -252,6 +252,7 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
 
 ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 {
+
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_get_active_conn");
 	ngx_socket_t fd = -1;
 	ngx_err_t    err;
@@ -278,7 +279,7 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 		ngx_memzero(active_conn, sizeof(ngx_tcp_reuse_conn_t));
 		ngx_queue_insert_tail(&empty_conns, &active_conn->q_elt);
 
-		if (recv(fd, test, 0, 0) == 0) {
+		if (recv(fd, test, 1, MSG_PEEK) == 0) {
 			ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "0 : errno:%d, %s", ngx_socket_errno, strerror(errno));
 			close(fd);
 			fd = -1;
@@ -298,7 +299,7 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 
     }
 
-    if (count + temp_count < INIT_CONNECTIONS - 50) {
+    if (count + temp_count < INIT_CONNECTIONS) {
         diff = INIT_CONNECTIONS - count - temp_count;
         for (i = 0; i < diff; i++) {
             ngx_tcp_reuse_init_conn(log);
@@ -310,6 +311,8 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 
 int ngx_tcp_reuse_put_active_conn(ngx_socket_t fd, ngx_log_t *log)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "put tcp pool conn:%d", fd);
+
 	ngx_tcp_reuse_conn_t *new_conn = NULL;
 	ngx_queue_t *head = NULL;
 	if (ngx_queue_empty(&empty_conns)) {
