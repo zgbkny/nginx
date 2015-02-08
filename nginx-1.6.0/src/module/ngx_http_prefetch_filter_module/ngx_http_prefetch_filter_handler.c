@@ -132,7 +132,7 @@ ngx_http_prefetch_handle_url(ngx_int_t type, u_char *url, size_t len, ngx_http_r
 	}
 	char *ip = inet_ntoa(*(struct in_addr*) (p_host->h_addr_list[0]));
 	sock_addr.sin_family = AF_INET;
-	sock_addr.sin_port = htons((in_port_t)8080);
+	sock_addr.sin_port = htons((in_port_t)80);
 	sock_addr.sin_addr.s_addr = inet_addr(ip);
 	nd_u->sockaddr = (struct sockaddr *)&sock_addr;
 	nd_u->socklen = sizeof(struct sockaddr_in);	

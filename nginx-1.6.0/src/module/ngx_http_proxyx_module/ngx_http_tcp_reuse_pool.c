@@ -29,6 +29,10 @@ static ngx_connection_t  dummy;
 void
 ngx_http_tcp_reuse_pool_event_handler(ngx_event_t *ev)
 {
+    ngx_err_t            err = 0;
+    socklen_t            len = sizeof(ngx_err_t);
+
+
     temp_count--;
 
 
@@ -43,37 +47,43 @@ ngx_http_tcp_reuse_pool_event_handler(ngx_event_t *ev)
     }
 
     if (ev == c->write) {
+
+        getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (void *)&err, &len);
         // add conn to pool
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_tcp_reuse_pool_event_handler add %d", errno);
-
-        if (ngx_tcp_reuse_put_active_conn(c->fd, c->log) == NGX_OK) {
-         
-            if (c->read->timer_set) {
-                ngx_del_timer(c->read);
-            }
-
-            if (c->write->timer_set) {
-                ngx_del_timer(c->write);
-            }
-
-            if (ngx_del_conn) {
-                ngx_del_conn(c, NGX_DISABLE_EVENT);
-            } else {
-                if (c->read->active || c->read->disabled) {
-                    ngx_del_event(c->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
-                }
-
-                if (c->write->active || c->write->disabled) {
-                    ngx_del_event(c->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
-                }
-            }
-            c->fd = -1;
-            ngx_reusable_connection(c, 0);
-            ngx_free_connection(c);
-            c = NULL;
-        } else {
+        if (err) {
             ngx_close_connection(c);
+        } else {
+            if (ngx_tcp_reuse_put_active_conn(c->fd, c->log) == NGX_OK) {
+             
+                if (c->read->timer_set) {
+                    ngx_del_timer(c->read);
+                }
+
+                if (c->write->timer_set) {
+                    ngx_del_timer(c->write);
+                }
+
+                if (ngx_del_conn) {
+                    ngx_del_conn(c, NGX_DISABLE_EVENT);
+                } else {
+                    if (c->read->active || c->read->disabled) {
+                        ngx_del_event(c->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+                    }
+
+                    if (c->write->active || c->write->disabled) {
+                        ngx_del_event(c->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
+                    }
+                }
+                c->fd = -1;
+                ngx_reusable_connection(c, 0);
+                ngx_free_connection(c);
+                c = NULL;
+            } else {
+                ngx_close_connection(c);
+            }
         }
+
     } else {
         ngx_close_connection(c);
     }

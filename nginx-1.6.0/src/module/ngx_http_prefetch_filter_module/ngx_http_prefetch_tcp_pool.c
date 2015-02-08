@@ -84,7 +84,7 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
     socklen_t                socklen;
     struct sockaddr         *sockaddr;
 
-    return NGX_OK;
+    //return NGX_OK;
 
     // set address
     static struct sockaddr_in sock_addr;

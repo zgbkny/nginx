@@ -57,6 +57,7 @@ typedef struct {
 	ngx_flag_t		gzip_flag;
 	ngx_buf_t  	   *in_buf;
 	ngx_buf_t 	   *out_buf;
+	size_t 			index;
 } ngx_http_prefetch_ctx_t;
 
 typedef struct {
@@ -179,6 +180,7 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 		ctx->gzip_flag = GZIP_NOT_FLAG;
 		ctx->out_buf = NULL;
 		ctx->in_buf = NULL;
+		ctx->index = 0;
 		ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter type check");
 
 		/*now we need to check if we should analysis the response*/ 
@@ -233,6 +235,7 @@ ngx_http_valid_url(u_char *url, ngx_log_t *log)
 	
 	size_t 		len;
 	size_t		i = 0;
+	ngx_int_t 	ret = -1;
 	ngx_str_t	http_str = ngx_string("http:");
 	ngx_str_t	gif_str = ngx_string(".gif");
 	ngx_str_t	png_str = ngx_string(".png");
@@ -242,7 +245,7 @@ ngx_http_valid_url(u_char *url, ngx_log_t *log)
 	ngx_str_t	flv_str = ngx_string(".flv");
 	ngx_str_t	ico_str = ngx_string(".ico");
 	ngx_str_t	swf_str = ngx_string(".swf");
-	ngx_str_t	dot_str = ngx_string(".");
+	ngx_str_t	dot_str = ngx_string("?");
 	
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_http_valid_url");
 
@@ -261,10 +264,19 @@ ngx_http_valid_url(u_char *url, ngx_log_t *log)
 	}	
 	len = strlen((char *)url);
 	
-	// check if there is a dot 
-	if (kmp_search(url, len, dot_str.data, dot_str.len, log) == -1) {
-		goto error;
+	// check if there is a ? 
+	ret = kmp_search(url, len, dot_str.data, dot_str.len, log);
+	if (ret == -1) {
+		if (len > 5) {
+			url = url + len - 5;
+			len = 5;
+		}
+	} else {
+		url += ret - 5;
+		len = len - (ret - 5);
 	}
+
+
 
 	// check if this is a gif
 	if (kmp_search(url, len, gif_str.data, gif_str.len, log) != -1) {
@@ -411,7 +423,7 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 	}
 
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_body_filter flag:%d, gzip_flag:%d", ctx->flag, ctx->gzip_flag);
-
+	
 
 	if (ctx->flag == PREFETCH_FLAG) {
 		
@@ -434,11 +446,16 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 				
 				ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip result:%d", ret);
 				if (ret == 0) {
+					ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip data:%d, %d, %d", len, ctx->index, ctx->out_buf->pos - ctx->out_buf->start);
+					ctx->out_buf->pos = ctx->out_buf->start + ctx->index;
+					ctx->index = len;
 					ctx->out_buf->last += len;
 					if (len >= in_len) {
-						ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip data:%d, %s", len, ctx->out_buf->last);
+						ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip data:%d, %d, %d", len, ctx->index, ctx->out_buf->pos - ctx->out_buf->start);
 					}
 					ngx_http_prefetch_filter_url(r, ctx->out_buf->pos, ctx->out_buf->last, r->connection->log);
+					ctx->out_buf->pos = ctx->out_buf->start;
+					ctx->out_buf->last = ctx->out_buf->start;
 				}
 			}
 			
