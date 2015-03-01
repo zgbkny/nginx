@@ -2353,7 +2353,7 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "u->buffering %d", u->buffering);
 
- //   u->buffering = 0;
+    u->buffering = 0;
 
     if (!u->buffering) {
 

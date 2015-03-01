@@ -404,16 +404,20 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 	ngx_http_prefetch_ctx_t			*ctx;
 	ngx_chain_t 					*normal_chain;
 	ngx_buf_t 						*buf;
-	ngx_time_t 						*temp_time;
-	ngx_time_t 						*end_time;
+	ngx_time_t 						 temp_time;
+	ngx_time_t 						 end_time;
+	struct timeval 					 tv;
+
 	uLong    						 in_len;
 	uLong   						 len;
 	int 							 ret;
 
 
+	ngx_gettimeofday(&tv);
+	temp_time.sec = tv.tv_sec;
+	temp_time.msec = tv.tv_usec / 1000;
 
-	ngx_time_update();
-	temp_time = ngx_timeofday();
+
 	normal_chain = in;
 
 	ctx = ngx_http_get_module_ctx(r, ngx_http_prefetch_filter_module);
@@ -422,11 +426,13 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 	//	return NGX_ERROR;
 	}
 
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_body_filter flag:%d, gzip_flag:%d", ctx->flag, ctx->gzip_flag);
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_body_filter flag:%d, gzip_flag:%d ", ctx->flag, ctx->gzip_flag);
 	
 
 	if (ctx->flag == PREFETCH_FLAG) {
 		
+
+
 		/*1: for some gzip or some other type content, we need to process data in buffer first
 				(for example: un gzip the gzip data), then to analysis*/
 		if (ctx->gzip_flag == GZIP_FLAG) {
@@ -441,9 +447,17 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 					}
 					normal_chain = normal_chain->next;
 				}
+
+				ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_body_filter data len:%d ", ctx->in_buf->last - ctx->in_buf->pos);
+
 				in_len = ctx->in_buf->last - ctx->in_buf->pos;
 				ret = ngx_http_prefetch_gzip_decompress((Byte *)ctx->in_buf->pos, in_len, (Byte *)ctx->out_buf->last, &len);
-				
+
+				ngx_gettimeofday(&tv);
+				end_time.sec = tv.tv_sec;
+				end_time.msec = tv.tv_usec / 1000;
+
+				ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gzip decompress time:%d, %d", end_time.sec - temp_time.sec, end_time.msec - temp_time.msec);
 				ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip result:%d", ret);
 				if (ret == 0) {
 					ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "http prefetch body gzip data:%d, %d, %d", len, ctx->index, ctx->out_buf->pos - ctx->out_buf->start);
@@ -456,6 +470,12 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 					ngx_http_prefetch_filter_url(r, ctx->out_buf->pos, ctx->out_buf->last, r->connection->log);
 					ctx->out_buf->pos = ctx->out_buf->start;
 					ctx->out_buf->last = ctx->out_buf->start;
+
+					ngx_gettimeofday(&tv);
+					end_time.sec = tv.tv_sec;
+					end_time.msec = tv.tv_usec / 1000;
+
+					ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gzip decompress and filter time:%d, %d", end_time.sec - temp_time.sec, end_time.msec - temp_time.msec);
 				}
 			}
 			
@@ -481,10 +501,7 @@ ngx_http_prefetch_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 		
 	}
 
-	ngx_time_update();
-	end_time = ngx_timeofday();
-
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "body filter time:%d, %d", end_time->sec - temp_time->sec, end_time->msec - temp_time->msec);
+	
 
 	return ngx_http_next_body_filter(r, in);
 }
