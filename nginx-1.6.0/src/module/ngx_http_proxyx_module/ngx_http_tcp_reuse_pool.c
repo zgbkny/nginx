@@ -2,8 +2,9 @@
 
 #define ngx_tcp_reuse_pool_size 40960000
 #define ngx_tcp_reuse_conns_init_size 10000
-#define INIT_CONNECTIONS 300
+#define INIT_CONNECTIONS 1000
 
+static ngx_addr_t       *conn_pool_addr; 
 
 static ngx_pool_t 		*ngx_reuse_pool;
 
@@ -99,11 +100,11 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
     ngx_event_t             *rev, *wev;
     ngx_int_t                event;
     ngx_uint_t               level;
-    socklen_t                socklen;
-    struct sockaddr         *sockaddr;
+    socklen_t                socklen = conn_pool_addr->socklen;
+    struct sockaddr         *sockaddr = conn_pool_addr->sockaddr;
 
-    return NGX_OK;
-   
+
+   /*
     // set address
     static struct sockaddr_in sock_addr;
     struct hostent *p_host = gethostbyname((char *)"192.168.0.200");
@@ -116,11 +117,11 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
     sock_addr.sin_addr.s_addr = inet_addr(ip);
     sockaddr = (struct sockaddr *)&sock_addr;
     socklen = sizeof(struct sockaddr_in); 
-
+*/
 
     s = ngx_socket(sockaddr->sa_family, SOCK_STREAM, 0);
 
-    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, log, 0, "socket %d", s);
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, log, 0, "socket %d, errno:%d", s, errno);
     if (s == (ngx_socket_t) -1) {
         return NGX_ERROR;
     }   
@@ -218,14 +219,16 @@ static void ngx_tcp_pool_delay_timeout_handler(ngx_event_t *ev)
     	ngx_tcp_reuse_put_active_conn(fd, ev->log);
     }
 
-    ngx_add_timer(ev, 10000);
+    ngx_add_timer(ev, 1000);
 }  
 
-int ngx_tcp_reuse_pool_init(ngx_log_t *log)
+int ngx_tcp_reuse_pool_init(ngx_addr_t *addr, ngx_log_t *log)
 {
 	ngx_int_t    i;
     ngx_reuse_pool = ngx_create_pool(ngx_tcp_reuse_pool_size, log);
-    
+ 
+    conn_pool_addr = addr;
+
 	if (ngx_reuse_pool == NULL) {
 		ngx_log_error(NGX_LOG_EMERG, log, 0, "could not create ngx_reuse_pool");
 		exit(1);
@@ -255,7 +258,7 @@ int ngx_tcp_reuse_pool_init(ngx_log_t *log)
     check_ev.data = &dummy;  
 
   	if (!check_ev.timer_set) {
-    	ngx_add_timer(&check_ev, 10000);
+    	ngx_add_timer(&check_ev, 1000);
     } 
 	return NGX_OK;
 }
@@ -311,6 +314,7 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
     }
 
     if (count + temp_count < INIT_CONNECTIONS) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "get tcp pool conn count:%d", count);
         diff = INIT_CONNECTIONS - count - temp_count;
         for (i = 0; i < diff; i++) {
             ngx_tcp_reuse_init_conn(log);
