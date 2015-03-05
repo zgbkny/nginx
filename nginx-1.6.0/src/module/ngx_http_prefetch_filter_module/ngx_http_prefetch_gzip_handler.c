@@ -5,7 +5,7 @@ void
 ngx_http_prefetch_gzip_test()
 {
 
-    z_stream d_stream = {0};
+    z_stream d_stream;// = {0};
 
     d_stream.zalloc = (alloc_func)0;
 
@@ -15,8 +15,12 @@ ngx_http_prefetch_gzip_test()
 int
 ngx_http_prefetch_gzip_decompress(Byte *zdata, uLong nzdata, Byte *data, uLong *ndata)
 {
+    //if (uncompress(data, ndata, zdata, nzdata) != Z_OK) return -1;
+    //else return 0;
+
+    // return -1;
     int err = 0;
-    z_stream d_stream = {0}; /* decompression stream */
+    z_stream d_stream;// = {0}; /* decompression stream */
     static char dummy_head[2] = 
     {
         0x8 + 0x7 * 0x10,
