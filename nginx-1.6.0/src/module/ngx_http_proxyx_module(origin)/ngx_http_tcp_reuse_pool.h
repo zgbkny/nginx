@@ -18,6 +18,7 @@ struct ngx_tcp_reuse_conn_s{
     ngx_event_t        						 write;
 
 	ngx_socket_t        					 fd;
+    
 
 	ngx_tcp_reuse_pool_handler_pt	         read_event_handler;
 	ngx_tcp_reuse_pool_handler_pt            write_event_handler;
@@ -26,7 +27,7 @@ struct ngx_tcp_reuse_conn_s{
 
 };
 
-int ngx_tcp_reuse_pool_init(ngx_log_t *log);
+int ngx_tcp_reuse_pool_init(ngx_addr_t *addr, ngx_log_t *log);
 
 ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log);
 

@@ -10,6 +10,7 @@
 #include <ngx_http.h>
 
 #include "ngx_http_tcp_reuse_pool.h"
+#include "ngx_http_push_handler.h"
 
 
 
@@ -626,6 +627,8 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
     ngx_int_t          rc;
     ngx_http_cache_t  *c;
 
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_cache");
+
     c = r->cache;
 
     if (c == NULL) {
@@ -692,7 +695,7 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http upstream cache: %i", rc);
-
+ //   ngx_http_push_handle(r, rc);
     switch (rc) {
 
     case NGX_HTTP_CACHE_UPDATING:
@@ -768,7 +771,9 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
     r->cached = 0;
 
-    return NGX_DECLINED;
+    return ngx_http_push_handle(r, rc);
+
+//    return NGX_DECLINED;
 }
 
 
@@ -2295,7 +2300,7 @@ ngx_http_upstream_process_body_in_memory(ngx_http_request_t *r,
 static void
 ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_send_response fd:%d", r->connection->fd);
 
     int                        tcp_nodelay;
     ssize_t                    n;
@@ -2347,6 +2352,9 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "u->buffering %d", u->buffering);
+
+    // this is my test 
+    //u->buffering = 0;
 
     if (!u->buffering) {
 
@@ -3580,7 +3588,15 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
         
         //if (!rc && ngx_tcp_reuse_put_active_conn(u->peer.connection->fd, r->connection->log) == NGX_OK) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_finalize_request put");
-        if (ngx_tcp_reuse_put_active_conn(u->peer.connection->fd, r->connection->log) == NGX_OK) {
+        if ((u->peer.connection->error == 0)
+            && (!(u->peer.connection == NULL 
+                || u->peer.connection->read->eof 
+                || u->peer.connection->read->error 
+                || u->peer.connection->timedout
+                || u->peer.connection->write->error 
+                || u->peer.connection->write->timedout
+                ))
+            && (ngx_tcp_reuse_put_active_conn(u->peer.connection->fd, r->connection->log) == NGX_OK)) {
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_finalize_request put ok");
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "reuse");
             if (u->peer.connection->read->timer_set) {

@@ -391,6 +391,9 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
     ngx_connection_t    *c;
     struct epoll_event   ee;
 
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, ev->log, 0,
+                   "epoll add event");
+
     c = ev->data;
 
     events = (uint32_t) event;
@@ -539,6 +542,8 @@ ngx_epoll_del_connection(ngx_connection_t *c, ngx_uint_t flags)
         c->write->active = 0;
         return NGX_OK;
     }
+    ngx_log_debug(NGX_LOG_DEBUG_EVENT, c->log, 0,
+                   "epoll del conn");
 
     ngx_log_debug1(NGX_LOG_DEBUG_EVENT, c->log, 0,
                    "epoll del connection: fd:%d", c->fd);

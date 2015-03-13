@@ -2,7 +2,7 @@
 
 #define ngx_tcp_reuse_pool_size 40960000
 #define ngx_tcp_reuse_conns_init_size 10000
-#define INIT_CONNECTIONS 100
+#define INIT_CONNECTIONS 1000
 
 static ngx_addr_t       *conn_pool_addr; 
 
@@ -14,10 +14,11 @@ static ngx_queue_t       empty_conns;
 
 static ngx_queue_t       active_conns;
 
+static void ngx_tcp_reuse_event_handler(ngx_event_t *ev);
 
-static void ngx_tcp_reuse_read_handler(ngx_event_t *ev);
+static void ngx_tcp_reuse_read_handler(ngx_tcp_reuse_conn_t *reuse_conn);
 
-static void ngx_tcp_reuse_write_handler(ngx_event_t *ev);
+static void ngx_tcp_reuse_write_handler(ngx_tcp_reuse_conn_t *reuse_conn);
 
 static size_t            count;
 static size_t            temp_count;
@@ -35,6 +36,8 @@ ngx_http_tcp_reuse_pool_event_handler(ngx_event_t *ev)
 
     temp_count--;
 
+
+
     ngx_connection_t            *c;
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_tcp_reuse_pool_event_handler");
     c = ev->data;
@@ -48,26 +51,38 @@ ngx_http_tcp_reuse_pool_event_handler(ngx_event_t *ev)
 
         getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (void *)&err, &len);
         // add conn to pool
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_tcp_reuse_pool_event_handler add %d", err);
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_http_tcp_reuse_pool_event_handler add %d", errno);
         if (err) {
             ngx_close_connection(c);
         } else {
+            if (ngx_tcp_reuse_put_active_conn(c->fd, c->log) == NGX_OK) {
              
-            if (c->read->timer_set) {
-                ngx_del_timer(c->read);
-            }
-            if (c->write->timer_set) {
-                ngx_del_timer(c->write);
-            }
+                if (c->read->timer_set) {
+                    ngx_del_timer(c->read);
+                }
 
-            if (ngx_tcp_reuse_put_active_conn(c, c->log) != NGX_OK) {
-                close(c->fd);
+                if (c->write->timer_set) {
+                    ngx_del_timer(c->write);
+                }
+
+                if (ngx_del_conn) {
+                    ngx_del_conn(c, NGX_DISABLE_EVENT);
+                } else {
+                    if (c->read->active || c->read->disabled) {
+                        ngx_del_event(c->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+                    }
+
+                    if (c->write->active || c->write->disabled) {
+                        ngx_del_event(c->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
+                    }
+                }
                 c->fd = -1;
                 ngx_reusable_connection(c, 0);
                 ngx_free_connection(c);
                 c = NULL;
+            } else {
+                ngx_close_connection(c);
             }
-            
         }
 
     } else {
@@ -165,6 +180,7 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
 
     if (ngx_event_flags & NGX_USE_CLEAR_EVENT) {
         // kqueue
+
         event = NGX_CLEAR_EVENT;
     } else {
         // select poll 
@@ -196,15 +212,11 @@ failed:
 static void ngx_tcp_pool_delay_timeout_handler(ngx_event_t *ev)   
 {  
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_tcp_pool_delay_timeout_handler");
-
-    int diff = 0, i = 0;
-
-    if (count + temp_count < INIT_CONNECTIONS) {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "get tcp pool conn count:%d", count);
-        diff = INIT_CONNECTIONS - count - temp_count;
-        for (i = 0; i < diff; i++) {
-            ngx_tcp_reuse_init_conn(ev->log);
-        }
+    ngx_int_t 		fd;
+	
+    fd = ngx_tcp_reuse_get_active_conn(ev->log);
+    if (fd != -1) {
+    	ngx_tcp_reuse_put_active_conn(fd, ev->log);
     }
 
     ngx_add_timer(ev, 1000);
@@ -265,31 +277,21 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 		ngx_queue_t *head_conn = ngx_queue_head(&active_conns);
 		ngx_tcp_reuse_conn_t *active_conn = ngx_queue_data(head_conn, ngx_tcp_reuse_conn_t, q_elt);
 		fd = active_conn->fd;
-		if (active_conn->c->read->timer_set) {
-			ngx_del_timer(active_conn->c->read);
+		if (active_conn->read.timer_set) {
+			ngx_del_timer(&active_conn->read);
 		}
-		if (active_conn->c->write->timer_set) {
-			ngx_del_timer(active_conn->c->write);
+		if (active_conn->write.timer_set) {
+			ngx_del_timer(&active_conn->write);
 		}
-		
-        active_conn->c->log = log;
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_get_active_conn check %d,fd:%d, %d", active_conn->c, fd, active_conn->c->log);
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, active_conn->c->log, 0, "ngx_tcp_reuse_get_active_conn check log");
-
-
-        if (ngx_del_conn) {
-            // del it 
-            ngx_del_conn(active_conn->c, NGX_DISABLE_EVENT);
-        } else {
-            if (active_conn->c->read->active) {
-                ngx_del_event(active_conn->c->read, NGX_READ_EVENT, NGX_DISABLE_EVENT);
-            }
-            if (active_conn->c->write->active) {
-                ngx_del_event(active_conn->c->write, NGX_WRITE_EVENT, NGX_DISABLE_EVENT);
-            }
-        }
-		
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "ngx_tcp_reuse_get_active_conn check 2");
+		if (active_conn->read.active) {
+			ngx_del_event(&active_conn->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+		}
+		if (active_conn->write.active) {
+			ngx_del_event(&active_conn->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
+		}
+		ngx_queue_remove(&active_conn->q_elt);
+		ngx_memzero(active_conn, sizeof(ngx_tcp_reuse_conn_t));
+		ngx_queue_insert_tail(&empty_conns, &active_conn->q_elt);
 
 		if ((rc = recv(fd, test, 1, MSG_PEEK)) == 0) {
 			ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "0 : errno:%d, %s", ngx_socket_errno, strerror(errno));
@@ -302,40 +304,20 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
             } else {
                 ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "!0 : errno:%d, %s", ngx_socket_errno, strerror(errno));
                 err = ngx_socket_errno;
-                if (err == 11) {
-                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "check");
-                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "check fd:%d", active_conn->c->fd);
-
-                    active_conn->c->fd = -1;
-                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "check1");
-
-                    ngx_free_connection(active_conn->c);
-                    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "check2");
-
-                    active_conn->c = NULL;
-
-                    ngx_queue_remove(&active_conn->q_elt);
-                    ngx_memzero(active_conn, sizeof(ngx_tcp_reuse_conn_t));
-                    ngx_queue_insert_tail(&empty_conns, &active_conn->q_elt);
+                if (err == 11)
                     break;
-                } else {
+                else {
                     close(fd);
                     fd = -1;
                 }
             }
 			
 		}
-        ngx_close_connection(active_conn->c);
-        active_conn->c = NULL;
 		ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "fd:%d", fd);
-        ngx_queue_remove(&active_conn->q_elt);
-        ngx_memzero(active_conn, sizeof(ngx_tcp_reuse_conn_t));
-        ngx_queue_insert_tail(&empty_conns, &active_conn->q_elt);
 
 		count--;
 
     }
-
 
     if (count + temp_count < INIT_CONNECTIONS) {
         ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "get tcp pool conn count:%d", count);
@@ -348,65 +330,12 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 	return fd;
 }
 
-static void ngx_tcp_reuse_read_handler(ngx_event_t *ev)
+int ngx_tcp_reuse_put_active_conn(ngx_socket_t fd, ngx_log_t *log)
 {
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "put tcp pool conn:%d", fd);
 
-    ngx_tcp_reuse_conn_t    *reuse_conn;
-    ngx_connection_t        *c;
-    c = ev->data;
-    reuse_conn = c->data;
-    // close it anyway, delete it in the queue
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_tcp_reuse_read_handler //we close it anyway fd:%d", c->fd);
-
-    // close fd;
-    close(c->fd);
-
-    // delete it from epoll
-    if (c->read->timer_set) {
-        ngx_del_timer(c->read);
-    }
-    if (c->write->timer_set) {
-        ngx_del_timer(c->write);
-    }
-    
-    if (ngx_del_conn) {
-        // del it 
-        ngx_del_conn(c, NGX_DISABLE_EVENT);
-    } else {
-        if (c->read->active) {
-            ngx_del_event(c->read, NGX_READ_EVENT, NGX_DISABLE_EVENT);
-        }
-        if (c->write->active) {
-            ngx_del_event(c->write, NGX_WRITE_EVENT, NGX_DISABLE_EVENT);
-        }
-    }
-
-    // delete it from queue;
-    ngx_queue_remove(&reuse_conn->q_elt);
-    ngx_memzero(reuse_conn, sizeof(ngx_tcp_reuse_conn_t));
-    ngx_queue_insert_tail(&empty_conns, &reuse_conn->q_elt);
-
-    ngx_free_connection(c);
-    count--;
-}
-
-static void ngx_tcp_reuse_write_handler(ngx_event_t *ev)
-{
-    ngx_connection_t        *c;
-    ngx_tcp_reuse_conn_t    *reuse_conn;
-
-    c = ev->data;
-    reuse_conn = c->data;
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_tcp_reuse_write_handler %d, fd:%d, %d", reuse_conn->c, reuse_conn->c->fd, reuse_conn->c->log);
-    // dummy here 
-}   
-
-int ngx_tcp_reuse_put_active_conn(ngx_connection_t *c, ngx_log_t *log)
-{
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "put tcp pool conn (c->log) fd:%d", c->fd);
-    ngx_int_t                event;
-	ngx_tcp_reuse_conn_t    *new_conn = NULL;
-	ngx_queue_t             *head = NULL;
+	ngx_tcp_reuse_conn_t *new_conn = NULL;
+	ngx_queue_t *head = NULL;
 	if (ngx_queue_empty(&empty_conns)) {
 		new_conn = ngx_array_push(&conns);	
 		if (new_conn == NULL) {
@@ -418,31 +347,35 @@ int ngx_tcp_reuse_put_active_conn(ngx_connection_t *c, ngx_log_t *log)
 		ngx_queue_remove(&new_conn->q_elt);
 	}
 	ngx_queue_insert_tail(&active_conns, &new_conn->q_elt);
-
-	new_conn->fd = c->fd;
-    new_conn->c = c;
-    new_conn->c->data = new_conn;
-    new_conn->c->read->handler = ngx_tcp_reuse_read_handler;
-    new_conn->c->write->handler = ngx_tcp_reuse_write_handler;
-    //new_conn->c->read->log = c->log;
-    //new_conn->c->write->log = c->log;
-    if (ngx_event_flags & NGX_USE_CLEAR_EVENT) {
-        // kqueue
-        event = NGX_CLEAR_EVENT;
-    } else {
-        // select poll 
-        event = NGX_LEVEL_EVENT;
-    }
-    ngx_del_conn(new_conn->c, NGX_DISABLE_EVENT);
-    if (ngx_add_event(new_conn->c->write, NGX_WRITE_EVENT, event) != NGX_OK) {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "put tcp pool conn add conn write failed"); 
-    }
-    if (ngx_add_event(new_conn->c->read, NGX_READ_EVENT, event) != NGX_OK) {
-        ngx_log_debug(NGX_LOG_DEBUG_HTTP, log, 0, "put tcp pool conn add conn read failed"); 
-    }
+	new_conn->fd = fd;
+	new_conn->read_event_handler = ngx_tcp_reuse_read_handler;
+	new_conn->write_event_handler = ngx_tcp_reuse_write_handler;
+	new_conn->read.handler = ngx_tcp_reuse_event_handler;
+	new_conn->write.handler = ngx_tcp_reuse_event_handler;
+    
     
 	count++;
 	return NGX_OK;
 }
 
+static void ngx_tcp_reuse_event_handler(ngx_event_t *ev)
+{
+	ngx_tcp_reuse_conn_t *reuse_conn;
+	reuse_conn = ev->data;
 
+	if (ev->write) {
+		reuse_conn->write_event_handler(reuse_conn);
+	} else {
+		reuse_conn->read_event_handler(reuse_conn);
+	}
+}
+
+static void ngx_tcp_reuse_read_handler(ngx_tcp_reuse_conn_t *reuse_conn)
+{
+
+}
+
+static void ngx_tcp_reuse_write_handler(ngx_tcp_reuse_conn_t *reuse_conn)
+{
+
+}	

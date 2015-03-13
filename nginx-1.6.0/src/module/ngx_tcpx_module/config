@@ -1,0 +1,14 @@
+
+
+
+CORE_INC="$CORE_INCS $ngx_addon_dir"
+
+ngx_addon_name = ngx_tcpx_module
+CORE_MODULES="$CORE_MODULES ngx_tcpx_module"
+TCP_CORE_MODULES="ngx_tcpx_module"
+
+
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/ngx_tcpx.h"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_tcpx.c"
+
+EVENTS_MODULES="$EVENT_MODULES $TCP_CORE_MODULES"

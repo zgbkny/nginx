@@ -3591,22 +3591,20 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
         if ((u->peer.connection->error == 0)
             && (!(u->peer.connection == NULL 
                 || u->peer.connection->read->eof 
-                //|| u->peer.connection->read->error 
-                //|| u->peer.connection->timedout
-                //|| u->peer.connection->write->error 
-                //|| u->peer.connection->write->timedout
+                || u->peer.connection->read->error 
+                || u->peer.connection->timedout
+                || u->peer.connection->write->error 
+                || u->peer.connection->write->timedout
                 ))
-            && (ngx_tcp_reuse_put_active_conn(u->peer.connection->fd, r->connection->log) == NGX_OK)) {
-            ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_upstream_finalize_request put ok");
+            ) {
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "reuse");
             if (u->peer.connection->read->timer_set) {
                 ngx_del_timer(u->peer.connection->read);
             }
-
             if (u->peer.connection->write->timer_set) {
                 ngx_del_timer(u->peer.connection->write);
             }
-
+            /*
             if (ngx_del_conn) {
                 ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_del_conn");
                 ngx_del_conn(u->peer.connection, NGX_DISABLE_EVENT);
@@ -3620,10 +3618,11 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
                     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_del_event write");
                     ngx_del_event(u->peer.connection->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
                 }
+            }*/
+
+            if (ngx_tcp_reuse_put_active_conn(u->peer.connection, r->connection->log) != NGX_OK) {
+                ngx_close_connection(u->peer.connection);
             }
-            u->peer.connection->fd = -1;
-            ngx_reusable_connection(u->peer.connection, 0);
-            ngx_free_connection(u->peer.connection);
         } else {
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "not reuse");
             ngx_close_connection(u->peer.connection);

@@ -13,6 +13,8 @@
 #include "ngx_http_tcp_reuse_pool.h"
 
 
+
+
 typedef struct ngx_http_proxy_rewrite_s  ngx_http_proxy_rewrite_t;
 
 typedef ngx_int_t (*ngx_http_proxy_rewrite_pt)(ngx_http_request_t *r,
@@ -97,6 +99,7 @@ typedef struct {
     ngx_uint_t                     head;  /* unsigned  head:1 */
 } ngx_http_proxy_ctx_t;
 
+static ngx_http_proxy_loc_conf_t  *proxyx_loc_conf;
 
 static ngx_int_t ngx_http_proxyx_init_process(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_proxy_eval(ngx_http_request_t *r,
@@ -2397,6 +2400,9 @@ ngx_http_proxy_create_loc_conf(ngx_conf_t *cf)
         return NULL;
     }
 
+    // add here
+    proxyx_loc_conf = conf;
+
     /*
      * set by ngx_pcalloc():
      *
@@ -3861,6 +3867,15 @@ ngx_http_proxy_set_vars(ngx_url_t *u, ngx_http_proxy_vars_t *v)
 static ngx_int_t
 ngx_http_proxyx_init_process(ngx_cycle_t *cycle)
 {
-	ngx_tcp_reuse_pool_init(cycle->log);	 
-	return NGX_OK;
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, cycle->log, 0, "ngx_http_proxyx_init_process");
+
+    ngx_http_proxy_loc_conf_t     *plcf = proxyx_loc_conf;
+
+    ngx_http_upstream_server_t    *us = (ngx_http_upstream_server_t *)plcf->upstream.upstream->servers->elts;
+
+    ngx_addr_t                    *addr = us->addrs;
+
+
+    ngx_tcp_reuse_pool_init(addr, cycle->log);	 
+    return NGX_OK;
 }
