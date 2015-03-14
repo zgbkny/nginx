@@ -3620,7 +3620,8 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
                 }
             }*/
 
-            if (ngx_tcp_reuse_put_active_conn(u->peer.connection, r->connection->log) != NGX_OK) {
+            if (ngx_tcp_reuse_put_active_conn(u->peer.connection, ngx_cycle->log) != NGX_OK) {
+                ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "put not ok");
                 ngx_close_connection(u->peer.connection);
             }
         } else {
