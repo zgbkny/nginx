@@ -195,7 +195,7 @@ failed:
 
 static void ngx_tcp_pool_delay_timeout_handler(ngx_event_t *ev)   
 {  
-    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_tcp_pool_delay_timeout_handler");
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP, ev->log, 0, "ngx_tcp_pool_delay_timeout_handler count:%d, temp_count:%d, all_count:%d", count, temp_count, count + temp_count);
 
     int diff = 0, i = 0;
 

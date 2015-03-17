@@ -52,23 +52,12 @@ ngx_http_prefetch_create_conf(ngx_conf_t *cf);
 static char*
 ngx_http_prefetch_merge_conf(ngx_conf_t *cf, void *parent, void *child);
 
-
-static ngx_queue_t       				 active_prefetch_filter;
-
 typedef struct {
-	ngx_pool_t 	   						*pool;
-	ngx_flag_t 							 flag;
-	ngx_flag_t							 gzip_flag;
-
-	
-	ngx_buf_t 	   						*in_buf;
-	ngx_buf_t 	   						*out_buf;
-} ngx_http_prefetch_filter_t;
-
-typedef struct {
-	ngx_http_prefetch_filter_t 			*filter;
-
-	size_t 								 index;
+	ngx_flag_t 		flag;
+	ngx_flag_t		gzip_flag;
+	ngx_buf_t  	   *in_buf;
+	ngx_buf_t 	   *out_buf;
+	size_t 			index;
 } ngx_http_prefetch_ctx_t;
 
 typedef struct {
@@ -234,6 +223,7 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter end");
 	
+
 
 	return ngx_http_next_header_filter(r);
 }
@@ -527,15 +517,7 @@ ngx_http_prefetch(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 static ngx_int_t
 ngx_http_prefetch_filter_init_process(ngx_cycle_t *cycle)
 {
-	// init prefetch conn pool
 	ngx_http_prefetch_pool_init(cycle->log);
-
-	// init thread pool
-	
-
-	// init prefetch pool
-	ngx_queue_init(&active_prefetch_filter);
-
 	return NGX_OK;
 }
 
