@@ -170,11 +170,9 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
         // select poll 
         event = NGX_LEVEL_EVENT;
     }
-
+    temp_count++;
     if (rc == -1) {
         ngx_add_timer(c->write, 60000);
-
-        temp_count++;
 
         // NGX_EINPROGRESS
         if (ngx_add_event(wev, NGX_WRITE_EVENT, event) != NGX_OK) {
@@ -189,6 +187,7 @@ ngx_tcp_reuse_init_conn(ngx_log_t *log)
     return NGX_OK;
 
 failed:
+    temp_count--;
     ngx_close_connection(c);
     return NGX_ERROR;
 }
@@ -311,9 +310,12 @@ ngx_socket_t ngx_tcp_reuse_get_active_conn(ngx_log_t *log)
 
                     active_conn->c = NULL;
 
+
+
                     ngx_queue_remove(&active_conn->q_elt);
                     ngx_memzero(active_conn, sizeof(ngx_tcp_reuse_conn_t));
                     ngx_queue_insert_tail(&empty_conns, &active_conn->q_elt);
+                    count--;
                     break;
                 } else {
                     close(fd);
