@@ -169,6 +169,8 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 	ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter");
 	ngx_http_upstream_t				*u;
 	ngx_http_prefetch_ctx_t			*ctx;
+	ngx_pool_t 						*temp_pool;
+	ngx_http_prefetch_filter_t 		*filter;
 
 	ngx_str_t 						 gzip_type = ngx_string("gzip");
 
@@ -182,17 +184,22 @@ ngx_http_prefetch_header_filter(ngx_http_request_t *r)
 	if (ctx == NULL) {
 		ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_prefetch_ctx_t));
 		if (ctx == NULL) {
-				
 			return ngx_http_next_header_filter(r);
 			//return NGX_ERROR;
 		}
 		
-		ctx->flag = PREFETCH_NOT_FLAG;
-		ctx->gzip_flag = GZIP_NOT_FLAG;
-		ctx->out_buf = NULL;
-		ctx->in_buf = NULL;
-		ctx->index = 0;
-		ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ngx_http_prefetch_header_filter type check");
+		temp_pool = ngx_create_pool(1024, ngx_cycle->log);
+		if (temp_pool == NULL) {
+			return ngx_http_next_header_filter(r);
+		}
+		filter = ngx_pcalloc(temp_pool, sizeof(ngx_http_prefetch_filter_t));
+		if (filter == NULL) {
+			ngx_destroy_pool(temp_pool);
+			return ngx_http_next_header_filter(r);
+		}
+
+		filter->pool = temp_pool;
+		ctx->filter = filter;
 
 		/*now we need to check if we should analysis the response*/ 
 		if (u != NULL &&
